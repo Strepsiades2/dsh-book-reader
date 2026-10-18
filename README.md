@@ -163,6 +163,7 @@ node -e "console.log(require('../dsh-pdf-search/node_modules/pdfjs-dist/package.
 - 依赖官方预览器的私有 DOM 标记（`data-pdf-page`、`data-document-zoom-scrollport` 等），**DSH 升级可能失效**；`dsh-pdf-search` 依赖同一批标记。
 - 扫描件（无文本层）搜索不到，只能看图。
 - 搜索是字面匹配，不处理连字符断词（`decom-\nposition` 匹配不到 `decomposition`）。
+- 搜索面板和 `dsh-pdf-search` 的查找条都固定在右上角，两个同时打开时**可能视觉重叠**；快捷键和 DOM 互不干扰。
 - 前端 `→ AI` / `↗` 插入的是**文本引用**，真正的页面图片由模型调用 `pdf_read_pages` 获取——这样同一页不会被重复塞进上下文。
 - `printedOffset` 是**探测**出来的，不是写死 20；换一本没有数字页标签的书会退化为物理页模式。
 
