@@ -160,6 +160,10 @@ build and could be renamed by an upgrade.
   is not stored.
 - **The info cache is keyed by path**, so replacing a PDF at the same path while
   the page is open can leave a stale page count/offset until reload.
+- **Both search panels are fixed at the top-right.** If this panel and
+  `dsh-pdf-search`'s find bar are open together they overlap visually; their
+  shortcuts and DOM are otherwise independent. The shortcuts are deliberately
+  different (`Cmd/Ctrl+Shift+F` here, `Cmd/Ctrl+F` there).
 - **Composer integration requires the session composer.** Without it (or while it
   refuses edits), the fallback is the clipboard, not a draft rewrite.
 - **Live GUI verification is still required** (profile install is the Lead's

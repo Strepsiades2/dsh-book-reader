@@ -136,6 +136,27 @@ The API version "6.4.299" does not match the Worker version "6.3.289"
 
 > 改完依赖必须**重启 DSH**：宿主进程的 ESM 模块是加载即缓存，换文件不会热替换。
 
+## 排查
+
+插件装上但 header 没出现 / 工具报错时：
+
+```sh
+# 1. profile 里是否登记、链接是否有效
+grep dsh-pdf-reader ~/.dsh/profiles/desktop/package.json
+ls -la ~/.dsh/profiles/desktop/node_modules/dsh-pdf-reader
+
+# 2. 三组离线测试是否还绿（不依赖运行中的 DSH）
+cd "<this repo>" && node test/core.test.mjs && node test/host.test.mjs && node test/client.test.mjs
+
+# 3. 宿主进程里的版本一致性（最常见的坑）
+node -e "console.log(require('./node_modules/pdfjs-dist/package.json').version)"
+node -e "console.log(require('../dsh-pdf-search/node_modules/pdfjs-dist/package.json').version)"
+```
+
+- **改了任何依赖或 `lib/index.js` 之后必须完全退出并重开 DSH**——宿主进程 ESM 模块加载即缓存，浏览器刷新不会重新加载宿主。
+- 报 `API version "x" does not match the Worker version "y"`：进程内有两个 `pdfjs-dist`，把本插件的版本对齐到另一份（见上节）。
+- header 控件不出现：多半是槽位匹配失败（`absolutePath` 不是 `.pdf`）或宿主插件整行没挂载；对照 `lib/client-README.md` 的 DOM/槽位假设。
+
 ## 已知限制
 
 - 只挂在**官方 PDF 预览**（含 Office→PDF 转出来的那个）；图片、Excel、Markdown 预览不受影响。
