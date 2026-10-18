@@ -1,0 +1,22 @@
+# dsh-pdf-reader bundle patch: mount the plugin into the active profile.
+# Host half: pdf_info / pdf_search / pdf_read_pages / pdf_current_page tools,
+#            /dsh-pdf-reader/* routes, and per-session current-page context
+#            injected through agent/pre-step.
+# Browser half: page readout, jump, outline/TOC, search, and share-to-chat on
+#               top of the official PDF preview's document-header slot.
+#
+# All config keys are optional. The defaults shown are the shipped behavior.
+- insert:
+    - id: pdf-reader
+      name: 'dsh-pdf-reader'
+      # config:
+      #   enabled: true
+      #   autoShare: true                 # false stops position injection
+      #   autoShareSection: true          # resolve the outline section too
+      #   autoShareMinIntervalMs: 180000  # at most once every 3 minutes
+      #   autoSharePageDelta: 1           # require a page change
+      #   autoShareMinSteps: 1            # at most once per step
+      #   maxPagesPerCall: 4              # hard image cap per tool call
+      #   defaultScale: 2                 # ~144 DPI; 3 for dense subscripts
+      #   maxSearchResults: 100
+      #   maxFileBytes: 268435456         # 256 MiB
