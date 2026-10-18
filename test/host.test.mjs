@@ -18,6 +18,8 @@ const STUBS = {
     const z = {
       boolean: node,
       number: node,
+      string: node,
+      array: (inner) => ({ ...node(), inner, default: (value) => ({ inner, defaultValue: value }) }),
       object: (shape) => ({
         shape,
         type: 'object',

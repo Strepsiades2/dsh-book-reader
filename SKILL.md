@@ -76,7 +76,13 @@ needs it, and prefer `include_image:false` first.
   `include_image:false` returns `textUnavailable`. Only images help.
 - Errors are coded: `PDF_NOT_FOUND`, `PDF_NOT_FILE`, `PDF_ENCRYPTED`,
   `PDF_CORRUPT`, `PDF_READER_INVALID_PAGE`, `PDF_READER_INVALID_SCALE`,
-  `PDF_RENDER_TIMEOUT`, `PDF_PAGE_TOO_LARGE`.
+  `PDF_RENDER_TIMEOUT`, `PDF_PAGE_TOO_LARGE`, `PDF_OUTSIDE_WORKSPACE`.
+- **Tools are workspace-scoped by default.** Pass a path inside the session
+  working directory; anything outside fails with `PDF_OUTSIDE_WORKSPACE` unless
+  the user set `allowOutsideWorkspace: true`.
+- `pdf_info` also reports `title`, `author`, `fileSizeBytes`, `pageSize` and
+  `textCoverage` (`isLikelyScanned`). Check `textCoverage.isLikelyScanned`
+  *before* searching: a scanned PDF has no text layer, so go straight to images.
 - Search is literal: it does not unfold hyphenation and is not a regex engine.
 - Page numbers are 1-based; relative paths resolve against the session directory.
 - No annotation/note features: this plugin reads and renders only.

@@ -47,6 +47,12 @@
 
 ## 安装
 
+> ⚠️ 本插件曾经在改名后导致一次 **desktop profile 启动失败**（应用自动备份并重置了 profile）。根因怀疑是「包名与目录名不一致」——现在目录名与包名已统一为 `dsh-book-reader`，但**首次启用仍建议用 GUI 插件开关**而不是直接改 `dsh.profile.bundles`，失败时只需关掉开关。
+>
+> 如果不幸启动失败：`dsh plugin --profile desktop remove dsh-book-reader`，再重开 DSH。
+
+
+
 ```sh
 # 1) 插件
 dsh plugin --profile desktop add "/absolute/path/to/dsh-book-reader"
@@ -83,6 +89,13 @@ DeepSeek 视觉计费：图片按 **14 px patch** 对齐、**3:1 降采样**投�
 
 想积累真实成本分布：`debugCost: true` → 每次 `pdf_read_pages` 追加一行 JSON 到 `.debug-cost.log`。
 
+## 安全
+
+- **工具默认只在 workspace 内**：`pdf_read_pages`/`pdf_search`/`pdf_info` 解析出的路径必须落在当前会话工作目录内，否则返回 `PDF_OUTSIDE_WORKSPACE`。确实要读工作区外文件时显式设 `allowOutsideWorkspace: true`。
+- **HTTP 路由**仅供同源 UI 使用：只接受 loopback Host、绝对路径、`.pdf`、普通文件、体积上限；默认无鉴权（本机进程可借它读本机 PDF，与 `dsh-pdf-search` 同一权衡）。要收紧就设 `routeAllowedRoots: ["/path/to/books"]`。
+- **恶意 PDF**：单页渲染 60 s 超时 + 5000 万像素画布上限；文档解析 60 s 超时；同时最多 2 个渲染任务、4 个文档缓存。
+- `debug: true` 才在 500 响应里带错误细节，默认不泄露路径。
+
 ## 配置
 
 全部可选，默认见 `cordis.patch.yml` 注释。常用：
@@ -97,6 +110,8 @@ DeepSeek 视觉计费：图片按 **14 px patch** 对齐、**3:1 降采样**投�
 | `maxLabels` | `0` | `pdf_info` 是否返回页标签（0 = 不返回，最省） |
 | `debug` | `false` | HTTP 500 里是否带错误细节 |
 | `debugCost` | `false` | 是否记录成本日志 |
+| `allowOutsideWorkspace` | `false` | 允许工具读取工作区外 PDF |
+| `routeAllowedRoots` | `[]` | HTTP 路由允许的目录白名单（空 = 不限制） |
 
 ## 架构
 

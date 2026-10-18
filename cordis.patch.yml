@@ -17,7 +17,9 @@
       #   autoSharePageDelta: 1           # require a page change
       #   autoShareMinSteps: 1            # at most once per step
       #   autoShareMaxAgeMs: 0            # 0 = no age limit on a reported position
-      #   maxPagesPerCall: 4              # hard cap per pdf_read_pages call
+      #   allowOutsideWorkspace: false    # tools may only read inside the session cwd
+#   routeAllowedRoots: []           # extra dirs the HTTP routes may serve; [] = any
+#   maxPagesPerCall: 4              # hard cap per pdf_read_pages call
       #   defaultScale: 2.5               # ~180 DPI; never useful above ~2.7
       #   maxTextCharsPerPage: 1200       # text kept per page (0 disables)
       #   maxSearchResults: 100
