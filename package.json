@@ -1,7 +1,7 @@
 {
   "name": "dsh-book-reader",
   "version": "0.1.1",
-  "description": "Read books and papers in DSH: page-aware controls on the official PDF preview, plus cheap text-first PDF context for the model (TOC, search, selective page images).",
+  "description": "Read books and papers in DSH: a reading toolbar on the official PDF preview, plus PDF tools for the model (page map, full-text search, page text and images).",
   "keywords": [
     "dsh",
     "dsh-plugin",

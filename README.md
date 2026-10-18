@@ -1,6 +1,6 @@
 # dsh-book-reader
 
-Read books and papers in DSH: a reading toolbar on the official PDF preview, plus four text-first PDF tools for the model.
+Read books and papers in DSH: a reading toolbar on the official PDF preview, plus four PDF tools for the model.
 
 **English** | [中文](#中文说明)
 
@@ -10,11 +10,11 @@ Read books and papers in DSH: a reading toolbar on the official PDF preview, plu
 
 - Previous/next page, a page readout that follows scrolling, and a jump box that accepts printed page numbers (or `p152` for PDF page 152).
 - Full-text search panel (`Cmd/Ctrl+Shift+F`): click a result to jump there, or insert its page reference into the chat.
-- Insert the current page reference (`[PDF p.132]`) at the composer caret — one undoable edit, never replaces your draft.
-- AI reading-position toggle: tells the model which page you are on (at most one short line per step, throttled to one every 3 minutes by default).
+- **Insert page reference** (manual): puts `[PDF p.132]` into the composer as plain text at the caret, only when you click it — one undoable edit, your draft is preserved.
+- **AI position hint** (on by default): while you chat, the model may receive a short one-line note with the page you are reading. It is throttled, so it never floods the conversation. Turn it off and the model only learns your page when it calls `pdf_current_page`.
 - Every control has a hover/focus explanation in English or Chinese, following the DSH UI language.
 
-**Model tools** — text first; images are a deliberate expense.
+**Model tools** — the model can look up the page map, search the text, or read chosen pages (as text or as page images) when you ask about a PDF.
 
 | Tool | What it does |
 | --- | --- |
@@ -29,7 +29,7 @@ Typical loop: `pdf_info` → `pdf_search` → `pdf_read_pages` (text) → images
 
 - **From npm**: DSH **Plugins → Add plugin** → `dsh-book-reader` (or pin `dsh-book-reader@0.1.1`), or `dsh plugin add dsh-book-reader`.
 - A fresh install applies live (this profile has HMR); **upgrading a plugin that is already loaded needs a DSH restart** to load the new code.
-- **Optional skill** (teaches the model the text-first workflow): symlink the package into the workspace:
+- **Optional skill** (gives the model the built-in PDF reading guide): symlink the package into the workspace:
   ```sh
   ln -sfn "<installed package dir>" "<workspace>/.dsh/skills/pdf-reader"
   ```
@@ -55,7 +55,7 @@ Every option is optional and the defaults are safe. Common ones: `maxPagesPerCal
 
 ## 中文说明
 
-在 DSH 里读 PDF 书和论文：官方 PDF 预览上加一条读书工具栏，外加四个“文本优先”的 PDF 工具给模型。
+在 DSH 里读 PDF 书和论文：官方 PDF 预览上加一条读书工具栏，外加四个 PDF 工具给模型。
 
 ### 功能
 
@@ -63,8 +63,8 @@ Every option is optional and the defaults are safe. Common ones: `maxPagesPerCal
 
 - 上一页/下一页、随滚动更新的页码读数、跳页框（输入印刷页码，或 `p152` 表示 PDF 第 152 页）。
 - 全文搜索面板（`Cmd/Ctrl+Shift+F`）：点结果跳页，或把该页引用插入对话框。
-- 把当前页引用（`[PDF p.132]`）插到输入框光标处 —— 一次可撤销的编辑，不会覆盖草稿。
-- AI 阅读位置开关：把“你正在看哪一页”告诉模型（每个 step 最多一条，默认最多 3 分钟一次）。
+- **插入当前页引用**（手动）：点一下才把 `[PDF p.132]` 以纯文本插到输入框光标处 —— 一次可撤销的编辑，不会覆盖草稿。
+- **AI 位置提示**（默认开）：你和模型对话时，模型可能收到一行“你正在看第 N 页”的短提示。有节流，不会刷屏；关掉后，模型只会在主动查询（`pdf_current_page`）时才知道页码。
 - 每个控件都有 hover / 键盘聚焦提示，跟随 DSH 界面语言（中文或英文）。
 
 **模型工具** —— 默认只花文本 token，图片是按需付的钱。
@@ -82,7 +82,7 @@ Every option is optional and the defaults are safe. Common ones: `maxPagesPerCal
 
 - **从 npm 安装**：DSH **Plugins → Add plugin** → 输入 `dsh-book-reader`（或锁定版本 `dsh-book-reader@0.1.1`），或命令行 `dsh plugin add dsh-book-reader`。
 - 全新安装即时生效（本 profile 已启用 HMR）；**升级已加载的插件需要完整重启 DSH** 才能加载新代码。
-- **可选 skill**（让模型学会文本优先流程）：把包目录软链到工作区：
+- **可选 skill**（给模型一份内置的 PDF 阅读指南）：把包目录软链到工作区：
   ```sh
   ln -sfn "<已安装的包目录>" "<workspace>/.dsh/skills/pdf-reader"
   ```
