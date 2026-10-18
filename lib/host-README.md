@@ -275,7 +275,7 @@ are omitted when the outline cannot be loaded.
 
 `apply()` registers one **prepended** `agent/pre-step` waterfall listener (the
 same mechanism as `dsh-time-context`). It first calls `next()`, never modifies a
-rejected step, and appends at most one user-role message.
+rejected step, and appends at most one user-role message **per turn**.
 
 A message is injected only when **all** of these hold:
 
@@ -285,10 +285,9 @@ A message is injected only when **all** of these hold:
    There is no "most recently reported path" fallback, so a position from
    another session is never injected.
 4. The position's `(path, pdfPage)` differs from the last injected position.
-5. At least `autoShareMinIntervalMs` has elapsed since the last injection
-   (default 180000 = 3 minutes).
-6. In the same turn, at least `autoShareMinSteps` steps have passed (default 1),
-   and this exact step has not already received an injection.
+5. This turn has not already received a hint (one hint per turn).
+6. If `autoShareMinIntervalMs > 0`, at least that many ms have elapsed since
+   the last hint (`0`, the default, imposes no time throttle).
 7. If `autoSharePageDelta > 1`, the page changed by at least that many pages.
 8. If `autoShareMaxAgeMs > 0`, the browser-reported position is not older than
    that age.
@@ -318,8 +317,8 @@ cannot be loaded. The printed page is the browser-reported label, or
 - `autoShareSection: false` — skip the `getInfo`/outline lookup used by the
   listener. The message then names the printed page only if the browser sent
   `printedPage`; otherwise it falls back to the PDF page.
-- `autoShareMaxAgeMs`, `autoShareMinIntervalMs`, `autoSharePageDelta`, and
-  `autoShareMinSteps` tune the throttle.
+- `autoShareMaxAgeMs`, `autoShareMinIntervalMs`, and `autoSharePageDelta` tune
+  the hint rule.
 
 ---
 
@@ -331,11 +330,10 @@ All keys are optional. The same defaults are applied by the loader schema and by
 | Key | Default | Range | Meaning |
 |---|---|---|---|
 | `enabled` | `true` | boolean | Master switch for tools, routes, and listener. |
-| `autoShare` | `true` | boolean | Inject the current reading page. |
+| `autoShare` | `true` | boolean | Inject the current reading page, once per turn. |
 | `autoShareSection` | `true` | boolean | Resolve the outline section for the injected message. |
-| `autoShareMinIntervalMs` | `180000` | 0–86400000 | Minimum ms between injections. |
+| `autoShareMinIntervalMs` | `0` | 0–86400000 | Optional minimum ms between hints; `0` = no time throttle. |
 | `autoSharePageDelta` | `1` | 1–1000 | Minimum absolute page change. |
-| `autoShareMinSteps` | `1` | 1–1000 | Minimum step distance within one turn. |
 | `autoShareMaxAgeMs` | `0` | 0–31536000000 | Ignore positions older than this; `0` = no limit. |
 | `maxPagesPerCall` | `4` | 1–8 | Hard image cap for `pdf_read_pages`. |
 | `defaultScale` | `2.5` | 1–3 | Default render scale (~180 DPI at 2.5). |
@@ -366,11 +364,11 @@ YAML example:
   `GET /current?path=…` and to nothing else. This is deliberate: no stale
   position from another session is ever injected.
 - **Injection state is process-local.** It is not written to the session log or
-  a projection. After a process restart the first eligible step may inject the
-  current page once again; the interval/step guards then resume from memory.
-- **Auto-share does not inject every step.** A user who stays on the same page
-  will not get a second message; the model is expected to call
-  `pdf_current_page` when it needs the position later.
+  a projection. After a process restart the first eligible turn may inject the
+  current page once again; the turn/page guards then resume from memory.
+- **Auto-share sends at most one hint per turn.** A second page change inside
+  the same turn waits for the next user message; the model is expected to call
+  `pdf_current_page` when it needs the position in between.
 - **The route is unauthenticated beyond the loopback Host check.** Any local
   process can ask it to read any local `.pdf`; the absence of a CORS header
   stops a web page from reading the response, but it is not a sandbox. This is

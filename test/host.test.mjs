@@ -475,96 +475,84 @@ const POSITION = {
   updatedAt: 1_000,
 }
 
-const stateAfter = (now = 1_000, turn = 1, step = 1) => ({
+const stateAfter = (now = 1_000, turn = 1) => ({
   lastInjectedPath: PDF,
   lastInjectedPdfPage: 152,
   lastInjectedAt: now,
   lastInjectedTurn: turn,
-  lastInjectedStep: step,
 })
 
-await test('decideAutoShare injects once, then only on a changed page after the interval', () => {
-  const config = host.normalizeConfig({ autoShareMinIntervalMs: 180_000 })
-  const first = host.decideAutoShare({ position: POSITION, now: 1_000, turn: 1, step: 1, config })
+await test('decideAutoShare injects at most once per turn, only for a changed page', () => {
+  const config = host.normalizeConfig()
+  const first = host.decideAutoShare({ position: POSITION, now: 1_000, turn: 1, config })
   assert.equal(first.inject, true)
   assert.deepEqual(first.nextState, stateAfter(1_000))
 
-  const same = host.decideAutoShare({ position: POSITION, state: first.nextState, now: 500_000, turn: 1, step: 3, config })
-  assert.equal(same.inject, false)
-  assert.equal(same.reason, 'unchanged')
-
-  const tooSoon = host.decideAutoShare({
+  // A new page inside the same turn waits for the next turn.
+  const sameTurn = host.decideAutoShare({
     position: { ...POSITION, pdfPage: 153, printedPage: 133 },
     state: first.nextState,
-    now: 100_000,
+    now: 2_000,
     turn: 1,
-    step: 3,
     config,
   })
-  assert.equal(tooSoon.inject, false)
-  assert.equal(tooSoon.reason, 'throttled')
-  assert.equal(tooSoon.nextState, first.nextState)
+  assert.equal(sameTurn.inject, false)
+  assert.equal(sameTurn.reason, 'same-turn')
 
-  const later = host.decideAutoShare({
+  // A new turn with a changed page injects once more.
+  const newTurn = host.decideAutoShare({
     position: { ...POSITION, pdfPage: 153, printedPage: 133 },
     state: first.nextState,
+    now: 3_000,
+    turn: 2,
+    config,
+  })
+  assert.equal(newTurn.inject, true)
+  assert.equal(newTurn.nextState.lastInjectedPdfPage, 153)
+  assert.equal(newTurn.nextState.lastInjectedTurn, 2)
+
+  // The same page never repeats, even across turns.
+  const unchanged = host.decideAutoShare({
+    position: { ...POSITION, pdfPage: 153, printedPage: 133 },
+    state: newTurn.nextState,
+    now: 4_000,
+    turn: 3,
+    config,
+  })
+  assert.equal(unchanged.inject, false)
+  assert.equal(unchanged.reason, 'unchanged')
+})
+
+await test('decideAutoShare honors the optional autoShareMinIntervalMs throttle', () => {
+  const config = host.normalizeConfig({ autoShareMinIntervalMs: 180_000 })
+  const state = stateAfter(1_000)
+  const throttled = host.decideAutoShare({
+    position: { ...POSITION, pdfPage: 153, printedPage: 133 },
+    state,
+    now: 100_000,
+    turn: 2,
+    config,
+  })
+  assert.equal(throttled.inject, false)
+  assert.equal(throttled.reason, 'throttled')
+  const later = host.decideAutoShare({
+    position: { ...POSITION, pdfPage: 153, printedPage: 133 },
+    state,
     now: 181_000,
-    turn: 1,
-    step: 3,
+    turn: 2,
     config,
   })
   assert.equal(later.inject, true)
-  assert.equal(later.nextState.lastInjectedPdfPage, 153)
-})
-
-await test('decideAutoShare refuses a second injection in the same step', () => {
-  const config = host.normalizeConfig({ autoShareMinIntervalMs: 0, autoShareMinSteps: 1 })
-  const state = stateAfter(1_000)
-  const verdict = host.decideAutoShare({
-    position: { ...POSITION, pdfPage: 153 },
-    state,
-    now: 2_000,
-    turn: 1,
-    step: 1,
-    config,
-  })
-  assert.equal(verdict.inject, false)
-  assert.equal(verdict.reason, 'same-step')
-})
-
-await test('decideAutoShare honors autoShareMinSteps', () => {
-  const config = host.normalizeConfig({ autoShareMinIntervalMs: 0, autoShareMinSteps: 3 })
-  const state = stateAfter(1_000, 2, 1)
-  const near = host.decideAutoShare({
-    position: { ...POSITION, pdfPage: 153 },
-    state,
-    now: 2_000,
-    turn: 2,
-    step: 2,
-    config,
-  })
-  assert.equal(near.inject, false)
-  assert.equal(near.reason, 'too-few-steps')
-  const far = host.decideAutoShare({
-    position: { ...POSITION, pdfPage: 153 },
-    state,
-    now: 2_000,
-    turn: 2,
-    step: 4,
-    config,
-  })
-  assert.equal(far.inject, true)
 })
 
 await test('decideAutoShare honors page delta, path changes, stale positions, and disable', () => {
-  const config = host.normalizeConfig({ autoShareMinIntervalMs: 0, autoSharePageDelta: 3 })
+  const config = host.normalizeConfig({ autoSharePageDelta: 3 })
   const state = stateAfter(1_000)
   const near = host.decideAutoShare({
     position: { ...POSITION, pdfPage: 154 },
     state,
     now: 2_000,
     turn: 2,
-    step: 1,
     config,
   })
   assert.equal(near.inject, false)
@@ -574,7 +562,6 @@ await test('decideAutoShare honors page delta, path changes, stale positions, an
     state,
     now: 2_000,
     turn: 2,
-    step: 1,
     config,
   })
   assert.equal(far.inject, true)
@@ -584,7 +571,6 @@ await test('decideAutoShare honors page delta, path changes, stale positions, an
     state,
     now: 2_000,
     turn: 2,
-    step: 1,
     config,
   })
   assert.equal(otherBook.inject, true)
@@ -593,7 +579,6 @@ await test('decideAutoShare honors page delta, path changes, stale positions, an
     position: POSITION,
     now: 100_000,
     turn: 2,
-    step: 1,
     config: host.normalizeConfig({ autoShareMaxAgeMs: 1_000 }),
   })
   assert.equal(stale.inject, false)
@@ -603,14 +588,13 @@ await test('decideAutoShare honors page delta, path changes, stale positions, an
     position: POSITION,
     now: 1_000,
     turn: 2,
-    step: 1,
     config: host.normalizeConfig({ autoShare: false }),
   })
   assert.equal(disabled.inject, false)
   assert.equal(disabled.reason, 'disabled')
 })
 
-await test('createAutoShareListener appends exactly one source-attributed message per changed page', async () => {
+await test('createAutoShareListener appends exactly one source-attributed message per turn', async () => {
   const config = host.normalizeConfig({ autoShareMinIntervalMs: 0 })
   const positions = host.createPositionStore()
   const infoCache = host.createInfoCache({
@@ -630,7 +614,6 @@ await test('createAutoShareListener appends exactly one source-attributed messag
   const payload = {
     agent: { session: { id: 's1' } },
     turn: 1,
-    step: 1,
     signal: { aborted: false },
   }
   const decision = { kind: 'accept', messages: [] }
@@ -644,12 +627,16 @@ await test('createAutoShareListener appends exactly one source-attributed messag
   assert.equal(first.kind, 'accept')
 
   clock = 2_000
-  const again = await listener({ ...payload, step: 2 }, async () => ({ kind: 'accept', messages: [] }))
+  const again = await listener({ ...payload }, async () => ({ kind: 'accept', messages: [] }))
   assert.equal(again.messages.length, 0)
 
   clock = 3_000
   positions.record({ path: PDF, pdfPage: 153, printedPage: 133, sessionId: 's1' })
-  const moved = await listener({ ...payload, step: 3 }, async () => ({ kind: 'accept', messages: [] }))
+  const sameTurn = await listener({ ...payload }, async () => ({ kind: 'accept', messages: [] }))
+  assert.equal(sameTurn.messages.length, 0, 'a second page in the same turn stays quiet')
+
+  clock = 4_000
+  const moved = await listener({ ...payload, turn: 2 }, async () => ({ kind: 'accept', messages: [] }))
   assert.equal(moved.messages.length, 1)
   assert.match(moved.messages[0].content[0].text, /printed 133 \(PDF 153\)/u)
 
@@ -672,7 +659,7 @@ await test('createAutoShareListener never injects for a position from another se
   })
   const decision = { kind: 'accept', messages: [] }
   const result = await listener(
-    { agent: { session: { id: 'mine' } }, turn: 1, step: 1, signal: { aborted: false } },
+    { agent: { session: { id: 'mine' } }, turn: 1, signal: { aborted: false } },
     async () => decision,
   )
   assert.equal(result, decision)

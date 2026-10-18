@@ -10,6 +10,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Simplified, feature-focused README (English + 中文) that leads with what the
   plugin does instead of full internals documentation.
+- The automatic reading-position hint is now sent **at most once per turn**, and
+  only when the page changed. The per-step guard and the 3-minute default
+  throttle are gone: `autoShareMinSteps` was removed and
+  `autoShareMinIntervalMs` now defaults to `0` (optional extra throttle).
 - Repository, homepage, and issue links now point to
   `github.com/Strepsiades2/dsh-book-reader`.
 

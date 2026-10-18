@@ -11,11 +11,10 @@
       name: 'dsh-book-reader'
       # config:
       #   enabled: true
-      #   autoShare: true                 # false stops position injection
+      #   autoShare: true                 # false stops position hints
       #   autoShareSection: true          # include the outline section in the line
-      #   autoShareMinIntervalMs: 180000  # at most once every 3 minutes
-      #   autoSharePageDelta: 1           # require a page change
-      #   autoShareMinSteps: 1            # at most once per step
+      #   autoShareMinIntervalMs: 0       # optional: min ms between hints (0 = no time throttle)
+      #   autoSharePageDelta: 1           # require a page change before another hint
       #   autoShareMaxAgeMs: 0            # 0 = no age limit on a reported position
       #   allowOutsideWorkspace: false    # tools may only read inside the session cwd
 #   routeAllowedRoots: []           # extra dirs the HTTP routes may serve; [] = any
