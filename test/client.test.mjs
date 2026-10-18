@@ -6,7 +6,7 @@
  * checks the module shape, slot registration, and the pure helpers (page
  * numbering, reference payloads, insertion, debounce/throttle). The second
  * half mounts the contribution in jsdom, supplies the official preview's DOM
- * markers and fake rectangles, and drives scroll, jump, share, search, the
+ * markers and fake rectangles, and drives scroll, jump, search, the
  * Cmd/Ctrl+Shift+F shortcut, reporting, the follow toggle, and unmount.
  *
  * jsdom has no layout engine, so every rectangle and scroll offset is supplied
@@ -150,7 +150,6 @@ contribution = { options: calls[2][1], component: calls[2][2] }
 
 const {
   buildSearchReference,
-  buildShareReference,
   createDebouncer,
   createRafThrottle,
   describeSearchFailure,
@@ -203,9 +202,6 @@ assert.equal(parsePageInput('410', { printedOffset: 20, pageCount: 410 }), undef
 assert.equal(parsePageInput('410', { printedOffset: 0, pageCount: 410 }), 410)
 
 assert.equal(normalizeSnippet('  the   singular\nvalue  '), 'the singular value')
-assert.equal(buildShareReference(152, 20), '[PDF p.132]')
-assert.equal(buildShareReference(20, 20), '[PDF p.20]')
-assert.equal(buildShareReference(152, undefined), '[PDF p.152]')
 assert.equal(
   buildSearchReference({ pdf: 152, printed: 132, snippet: '  singular   value\n decomposition ' }),
   'PDF p.132: singular value decomposition',
@@ -345,7 +341,7 @@ assert.ok(Math.abs(scroll.top - 592) < 1, 'page 2 is placed 8px below the top')
 scroll.top = 0
 
 // ---------------------------------------------------------------------------
-// Live mount: fetch routes, readout, reporting, jump, share, search, shortcut.
+// Live mount: fetch routes, readout, reporting, jump, search, shortcut.
 // ---------------------------------------------------------------------------
 const path = `/tmp/dsh-pdf-reader-test-${Date.now()}.pdf`
 const requests = []
@@ -542,14 +538,6 @@ await React.act(async () => {
 })
 assert.ok(Math.abs(scroll.top - 592) < 1)
 assert.equal(body.scrollTop, 0)
-
-// Share current page inserts [PDF p.1] through captureInsertion + insertText.
-await React.act(async () => {
-  header.querySelector('[data-dsh-pdf-reader="share"]').click()
-  await sleep(10)
-})
-assert.equal(insertions.at(-1).text, '[PDF p.1]')
-assert.deepEqual(insertions.at(-1).span, { start: 2, end: 2, draftRev: 11 })
 
 // Search opens, queries after the debounce, lists p.N — snippet, and AI inserts.
 await React.act(async () => {

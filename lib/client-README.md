@@ -17,7 +17,6 @@ For a `.pdf` preview only (matched on the `absolutePath` owner prop):
 | `‹` / `›` | Previous / next **physical** PDF page (consecutive pages, regardless of printed labels). |
 | `[132] / 410` | Current-page readout that follows scrolling. The box is also the jump box: type a page and press Enter. Shows the printed page when an offset is known, otherwise the physical page. |
 | `⌕` | Opens the search panel. |
-| `↗` | Inserts `[PDF p.132]` at the composer caret. |
 | `AI` + dot | Auto-follow / AI-context reporting toggle. Dot: green = host acknowledged, amber = sending, red = host route failed, faded = off. |
 
 The panel lists `p.132 — snippet` results. Clicking a result jumps to that page;
@@ -87,8 +86,7 @@ standard props are missing, the reference is copied to the clipboard instead and
 the header flashes `(copied)` / `Composer busy`.
 
 Search-result payloads use the printed page when the Host supplies one:
-`PDF p.132: singular value decomposition`. The share button uses the shorter
-`[PDF p.132]`.
+`PDF p.132: singular value decomposition`.
 
 ## Auto-follow / AI context
 
@@ -162,7 +160,7 @@ build and could be renamed by an upgrade.
   `physical = printed + offset` (the `pdfkit info` convention). A Host that
   returns the opposite convention would invert the readout.
 - **Scanned PDFs.** Search returns no matches / a “no text layer” message;
-  readout, jump, share, and AI insertion still work because they use page
+  readout, jump, and AI insertion still work because they use page
   wrappers, not extractable text.
 - **Search is case-insensitive substring matching** (`ignoreCase=1`), limited to
   100 hits; no regex, whole-word, or match navigation inside a page.
@@ -194,7 +192,7 @@ The test loads the real bundle through a fake `window.__ModuleLoader__`, checks
 the slot registration, page numbering/parsing, composer payload and
 `captureInsertion`/`insertText` use, debounce/throttle timing, DOM marker
 resolution, inner-scrollport jumping, a live jsdom mount (info → readout →
-report → toggle → jump → share → search → `→ AI` → shortcut → two-preview
+report → toggle → jump → search → `→ AI` → shortcut → two-preview
 election → cleanup), and quiet behavior for missing Host routes and non-PDF
 paths.
 
