@@ -12,7 +12,7 @@ The host half is plain hand-written ESM. There is no bundler step for
 
 ## Model tools
 
-All four tools are registered through `defineTool` from `@deepseek-ai/dsh-tools`.
+All three tools are registered through `defineTool` from `@deepseek-ai/dsh-tools`.
 `pdf_read_pages` is registered only while `ctx.attachments` is mounted, because
 it persists PNGs as durable image attachments. Page numbers accepted by tools
 are **1-based**.
@@ -133,35 +133,6 @@ the call: the image is still returned with `textUnavailable: true`.
 In `page_numbers: "pdf"` mode, `printed` comes from the PDF's page labels when
 available, so it can be a roman-numeral string for front matter; in `printed`
 mode it is the integer body-page number.
-
-### `pdf_current_page({ path? })`
-
-Cheap current reading-position lookup. No images.
-
-| Argument | Type | Meaning |
-|---|---|---|
-| `path` | string | Optional expected book. If it differs from the reported book, returns `current: null, reason: "path-mismatch"`. |
-
-Returns:
-
-```jsonc
-{
-  "current": {
-    "path": "/abs/book.pdf",
-    "book": "book",
-    "pdfPage": 152,
-    "printedPage": 132,
-    "pageNumberMode": "printed",
-    "section": { "title": "5B The Minimal Polynomial", "pdf": 150, "printed": 130, "depth": 1 },
-    "sectionTrail": ["Chapter 5 Eigenvalues and Eigenvectors", "5B The Minimal Polynomial"],
-    "updatedAt": 1760000000000
-  }
-}
-```
-
-or `{ "current": null, "reason": "no-reading-position" }`. The position is the
-one the browser half reported for **the calling session**; there is no
-cross-session fallback.
 
 ---
 
@@ -367,8 +338,8 @@ YAML example:
   a projection. After a process restart the first eligible turn may inject the
   current page once again; the turn/page guards then resume from memory.
 - **Auto-share sends at most one hint per turn.** A second page change inside
-  the same turn waits for the next user message; the model is expected to call
-  `pdf_current_page` when it needs the position in between.
+  the same turn waits for the next user message; in between, the model can ask
+  the user or read the page the user references explicitly.
 - **The route is unauthenticated beyond the loopback Host check.** Any local
   process can ask it to read any local `.pdf`; the absence of a CORS header
   stops a web page from reading the response, but it is not a sandbox. This is

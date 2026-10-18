@@ -17,6 +17,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Repository, homepage, and issue links now point to
   `github.com/Strepsiades2/dsh-book-reader`.
 
+### Removed
+
+- The `pdf_current_page` tool. The per-turn position hint (or a page reference
+  you insert yourself) now covers “which page am I on”, leaving three tools:
+  `pdf_info`, `pdf_search`, and `pdf_read_pages`.
+
 ## [0.1.0] — 2026-10-18
 
 First public release.

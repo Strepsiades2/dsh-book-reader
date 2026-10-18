@@ -900,7 +900,7 @@ function makeExec(sessionId = 's1') {
   }
 }
 
-await test('apply registers three cheap tools, one image tool, one route, and the pre-step listener', () => {
+await test('apply registers two cheap tools, one image tool, one route, and the pre-step listener', () => {
   const tools = []
   const routes = []
   const listeners = []
@@ -929,7 +929,7 @@ await test('apply registers three cheap tools, one image tool, one route, and th
     get: () => undefined,
   }
   host.apply(ctx, {})
-  assert.deepEqual(tools.map((tool) => tool.name), ['pdf_info', 'pdf_search', 'pdf_current_page', 'pdf_read_pages'])
+  assert.deepEqual(tools.map((tool) => tool.name), ['pdf_info', 'pdf_search', 'pdf_read_pages'])
   assert.equal(injections, 1)
   assert.equal(routes.length, 1)
   assert.equal(routes[0].kind, 'prefix')
@@ -959,7 +959,7 @@ await test('apply honors autoShare:false and enabled:false', () => {
 
   const noShare = build()
   host.apply(noShare.ctx, { autoShare: false })
-  assert.equal(noShare.tools.length, 4)
+  assert.equal(noShare.tools.length, 3)
   assert.equal(noShare.listeners.length, 0)
 
   const disabled = build()
@@ -1179,39 +1179,12 @@ await test('pdf_search defaults to ignore-case and caps the limit', async () => 
     config: host.normalizeConfig({ maxSearchResults: 50 }),
     core,
     infoCache: host.createInfoCache({ getInfo: async () => INFO, statFile: async () => PDF_STAT }),
-    positions: host.createPositionStore(),
     statFile: async () => PDF_STAT,
   }).find((definition) => definition.name === 'pdf_search')
   const value = await tool.execute({ path: PDF, query: 'eigenvalue', limit: 500 }, makeExec())
   assert.deepEqual(calls[0].options, { ignoreCase: true, limit: 50 })
   assert.equal(value.pages, 7)
   assert.equal(value.hits[0].snippet, 'x')
-})
-
-await test('pdf_current_page reports the session position and its section', async () => {
-  const positions = host.createPositionStore()
-  positions.record({ path: PDF, pdfPage: 152, printedPage: 132, sessionId: 's1' })
-  const tool = host.createCheapTools({
-    defineTool: (definition) => definition,
-    config: host.normalizeConfig({}),
-    core: {},
-    infoCache: host.createInfoCache({ getInfo: async () => INFO, statFile: async () => PDF_STAT }),
-    positions,
-    statFile: async () => PDF_STAT,
-  }).find((definition) => definition.name === 'pdf_current_page')
-
-  const value = await tool.execute({}, makeExec('s1'))
-  assert.equal(value.current.path, PDF)
-  assert.equal(value.current.pdfPage, 152)
-  assert.equal(value.current.printedPage, 132)
-  assert.equal(value.current.pageNumberMode, 'printed')
-  assert.equal(value.current.section.title, '5B The Minimal Polynomial')
-
-  const other = await tool.execute({}, makeExec('s2'))
-  assert.deepEqual(other, { current: null, reason: 'no-reading-position' })
-
-  const mismatch = await tool.execute({ path: '/books/other.pdf' }, makeExec('s1'))
-  assert.deepEqual(mismatch, { current: null, reason: 'path-mismatch' })
 })
 
 // ---------------------------------------------------------------------------

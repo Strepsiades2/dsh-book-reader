@@ -1,5 +1,5 @@
 # dsh-book-reader bundle patch: mount the plugin into the active profile.
-# Host half: pdf_info / pdf_search / pdf_read_pages / pdf_current_page tools,
+# Host half: pdf_info / pdf_search / pdf_read_pages tools,
 #            /dsh-book-reader/* routes, and a minimal per-turn reading-position
 #            line injected through agent/pre-step.
 # Browser half: page readout, jump, search panel, and share-to-chat on top of

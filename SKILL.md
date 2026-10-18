@@ -5,7 +5,7 @@ description: 'Read a PDF (book, paper, manual) cheaply and accurately with the d
 
 # Reading a PDF with `dsh-book-reader`
 
-Four tools, three cost tiers. **The default is text.** Images are a deliberate
+Three tools, two cost tiers. **The default is text.** Images are a deliberate
 expense, not the first move.
 
 | Tool | Cost | Use for |
@@ -14,7 +14,6 @@ expense, not the first move.
 | `pdf_search` | ~0 (text) | locating a phrase, theorem number, or figure caption |
 | `pdf_read_pages` + `include_image:false` | ~0 (text, per page) | prose, theorem statements, exercise text |
 | `pdf_read_pages` (images on) | **~350–1024 tokens/page** | formulas, diagrams, tables, layout |
-| `pdf_current_page` | ~0 | which page the user is looking at |
 
 ## Default loop (text-first)
 

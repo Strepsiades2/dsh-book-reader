@@ -1,6 +1,6 @@
 # dsh-book-reader
 
-Read books and papers in DSH: a reading toolbar on the official PDF preview, plus four PDF tools for the model.
+Read books and papers in DSH: a reading toolbar on the official PDF preview, plus three PDF tools for the model.
 
 **English** | [中文](#中文说明)
 
@@ -11,7 +11,7 @@ Read books and papers in DSH: a reading toolbar on the official PDF preview, plu
 - Previous/next page, a page readout that follows scrolling, and a jump box that accepts printed page numbers (or `p152` for PDF page 152).
 - Full-text search panel (`Cmd/Ctrl+Shift+F`): click a result to jump there, or insert its page reference into the chat.
 - **Insert page reference** (manual): puts `[PDF p.132]` into the composer as plain text at the caret, only when you click it — one undoable edit, your draft is preserved.
-- **AI position hint** (on by default): before a turn starts, the model may receive one short line with the page you are reading — at most once per turn, and only when the page changed since the last hint. Turn it off and the model only learns your page when it calls `pdf_current_page`.
+- **AI position hint** (on by default): before a turn starts, the model may receive one short line with the page you are reading — at most once per turn, and only when the page changed since the last hint. Turn it off and the model only learns your page when you insert a reference yourself.
 - Every control has a hover/focus explanation in English or Chinese, following the DSH UI language.
 
 **Model tools** — the model can look up the page map, search the text, or read chosen pages (as text or as page images) when you ask about a PDF.
@@ -21,7 +21,6 @@ Read books and papers in DSH: a reading toolbar on the official PDF preview, plu
 | `pdf_info` | Page count, printed↔physical page offset, outline/TOC. Text only. |
 | `pdf_search` | Literal full-text search; returns page numbers and snippets. |
 | `pdf_read_pages` | Text of chosen pages, optionally as images (`include_image: false` for text only; images cost ~350–1024 tokens/page). |
-| `pdf_current_page` | Which page and section the user is looking at. |
 
 Typical loop: `pdf_info` → `pdf_search` → `pdf_read_pages` (text) → images only for formulas, diagrams, or tables.
 
@@ -55,7 +54,7 @@ Every option is optional and the defaults are safe. Common ones: `maxPagesPerCal
 
 ## 中文说明
 
-在 DSH 里读 PDF 书和论文：官方 PDF 预览上加一条读书工具栏，外加四个 PDF 工具给模型。
+在 DSH 里读 PDF 书和论文：官方 PDF 预览上加一条读书工具栏，外加三个 PDF 工具给模型。
 
 ### 功能
 
@@ -64,7 +63,7 @@ Every option is optional and the defaults are safe. Common ones: `maxPagesPerCal
 - 上一页/下一页、随滚动更新的页码读数、跳页框（输入印刷页码，或 `p152` 表示 PDF 第 152 页）。
 - 全文搜索面板（`Cmd/Ctrl+Shift+F`）：点结果跳页，或把该页引用插入对话框。
 - **插入当前页引用**（手动）：点一下才把 `[PDF p.132]` 以纯文本插到输入框光标处 —— 一次可撤销的编辑，不会覆盖草稿。
-- **AI 位置提示**（默认开）：每轮对话开始时，模型可能收到一行“你正在看第 N 页”的短提示 —— 每轮最多一次，且页码变了才发。关掉后，模型只会在主动查询（`pdf_current_page`）时才知道页码。
+- **AI 位置提示**（默认开）：每轮对话开始时，模型可能收到一行“你正在看第 N 页”的短提示 —— 每轮最多一次，且页码变了才发。关掉后，模型只会通过你自己插入的引用知道页码。
 - 每个控件都有 hover / 键盘聚焦提示，跟随 DSH 界面语言（中文或英文）。
 
 **模型工具** —— 默认只花文本 token，图片是按需付的钱。
@@ -74,7 +73,6 @@ Every option is optional and the defaults are safe. Common ones: `maxPagesPerCal
 | `pdf_info` | 页数、印刷页↔物理页偏移、目录/TOC；纯文本。 |
 | `pdf_search` | 字面全文搜索；返回页码和摘要。 |
 | `pdf_read_pages` | 选中页的文本，也可返回页面图片（`include_image: false` 只取文本；图片约 350–1024 token/页）。 |
-| `pdf_current_page` | 用户当前在看哪一页、哪一节。 |
 
 典型流程：`pdf_info` → `pdf_search` → `pdf_read_pages`（文本）→ 只有公式、图表、表格才看图。
 
