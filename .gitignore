@@ -3,3 +3,4 @@ artifacts/
 .tmp/
 *.log
 .DS_Store
+.debug.log
