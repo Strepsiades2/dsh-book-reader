@@ -17,11 +17,11 @@
   "author": "strepsiades",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/strepsiades/dsh-book-reader.git"
+    "url": "git+https://github.com/Strepsiades2/dsh-book-reader.git"
   },
-  "homepage": "https://github.com/strepsiades/dsh-book-reader#readme",
+  "homepage": "https://github.com/Strepsiades2/dsh-book-reader#readme",
   "bugs": {
-    "url": "https://github.com/strepsiades/dsh-book-reader/issues"
+    "url": "https://github.com/Strepsiades2/dsh-book-reader/issues"
   },
   "engines": {
     "node": ">=20"
