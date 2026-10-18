@@ -1,54 +1,91 @@
 ---
 name: pdf-reader
-description: Read a PDF (book, paper, manual) through the dsh-pdf-reader tools — page info/TOC, literal full-text search, and rendered page images. Use whenever the user asks about specific pages, a section, a theorem, a figure, or "this page" in a PDF, or wants a PDF indexed or searched.
+description: 'Read a PDF (book, paper, manual) cheaply and accurately with the dsh-book-reader tools: page map/TOC, literal full-text search, then selective page reads (text first, images only when typography matters). Use whenever the user asks about specific pages, a section, a theorem, a figure, or "this page" in a PDF.'
 ---
 
-# Reading a PDF
+# Reading a PDF with `dsh-book-reader`
 
-The `dsh-pdf-reader` plugin provides four model tools. They are cheap; use them instead of shelling out to pdftotext or guessing from file names.
+Four tools, three cost tiers. **The default is text.** Images are a deliberate
+expense, not the first move.
 
-| Tool | Cost | Use it to |
+| Tool | Cost | Use for |
 | --- | --- | --- |
-| `pdf_info` | tiny (text) | page count, **printed↔physical page offset**, resolved **outline/TOC** |
-| `pdf_search` | tiny (text) | find candidate pages by literal phrase |
-| `pdf_read_pages` | **~350–1024 tokens/page** | actually *see* pages (returns image blocks) |
-| `pdf_current_page` | tiny | which page the user is looking at right now |
+| `pdf_info` | ~0 (text) | page count, printed↔physical offset, outline/TOC |
+| `pdf_search` | ~0 (text) | locating a phrase, theorem number, or figure caption |
+| `pdf_read_pages` + `include_image:false` | ~0 (text, per page) | prose, theorem statements, exercise text |
+| `pdf_read_pages` (images on) | **~350–1024 tokens/page** | formulas, diagrams, tables, layout |
+| `pdf_current_page` | ~0 | which page the user is looking at |
 
-## The loop that works
+## Default loop (text-first)
 
-1. **`pdf_info`** once per document. Note `printedOffset` and skim the outline. Never hardcode an offset — it is detected per document (`printed = pdf − printedOffset`).
-2. **`pdf_search`** to narrow down. Search is literal and does not unfold hyphenation; try a distinctive phrase, not a formula.
-3. **`pdf_read_pages`** for only the 1–4 pages you actually need, then answer from what you see.
-4. When the user says "this page" / "当前页" / "what I'm looking at" → **`pdf_current_page`** (or just use the reading-position line the plugin injects automatically).
+1. `pdf_info` once per document → note `printedOffset` and the outline. Never
+   hardcode an offset; it is detected (`printed = pdf − printedOffset`).
+2. `pdf_search` for a distinctive phrase → page numbers.
+3. `pdf_read_pages` with **`include_image:false`** to read those pages as text.
+4. Only if the text is ambiguous or the question is about typography (a formula,
+   a diagram, a table) → call again with images on, and crop.
 
-## Cost control (important)
+## When images are worth it
 
-DeepSeek vision billing projects each image onto a 14 px-patch grid with 3:1 downsampling, `tokens = gridH × (gridW + 1) + 2`, **capped at 1024 tokens per image**. A page at the default 2.5× scale costs **~900 tokens**; it can never exceed 1024.
+- The question is about a **formula's exact form**, a **matrix layout**, a
+  **diagram**, or **which theorem box** a sentence is in.
+- Extracted text is known to garble math: `P_{n−1}(C)` becomes `𝒫 𝑛 − 1(𝐂)`,
+  subscripts flatten, fractions collapse, theorem numbers split across lines.
+- Prefer `crop` (`"0,0,1,0.55"` = top 55%) and `image_quality:"cheap"` (1.5×,
+  ~350 tokens) unless dense subscripts need `scale:3`.
 
-- `image_quality: "cheap"` (1.5×) ≈ **347 tokens** — enough for prose, not dense subscripts.
-- Default 2.5× ≈ **914 tokens** — best readable quality per token. **Do not request scale above 3**: the provider downscales it back to the same grid, so you pay latency for nothing.
-- `crop` (e.g. `{x:0,y:0,w:1,h:0.55}`) keeps only the region you need and cuts the bill.
-- Hard cap `maxPagesPerCall` (default 4). Don't stream a whole chapter as images: search first, read the few pages that matter.
-- Images persist in the conversation and are re-billed on later turns. Read once, then summarise in text.
+## Token economics (DeepSeek vision billing)
+
+Each image is projected onto a 14 px patch grid, downsampled 3:1, and **capped at
+1024 tokens**. For a 6×9 in book page:
+
+| Render | Pixels | Tokens |
+| --- | --- | --- |
+| 1.5× (`image_quality:"cheap"`) | 563×954 | **347** |
+| **2.5× (default)** | 938×1590 | **914** |
+| 3× | 1125×1908 | 1002 (capped — no gain above ~2.7×) |
+
+- Hard cap `maxPagesPerCall` (default **4**) is enforced before rendering.
+- `pdf_read_pages` returns `imageTokens` and per-page `tokens`; check them.
+- Images stay in the conversation and are re-billed on later turns. **Read once,
+  then answer in text.**
+- Never request `scale` above 3: the provider downscales to the same grid anyway.
 
 ## Page numbering
 
-`pdf_info` returns `printedOffset` with `physical pdf page = printed page + printedOffset`. Tools and the UI default to **printed** numbers when an offset exists; a PDF without numeric page labels falls back to physical pages. Say which numbering you mean when it is ambiguous.
+`pdf_info` returns `printedOffset` with `physical = printed + printedOffset`.
+Tools accept either numbering; **printed is the default when detectable**.
+Roman-numeral front matter has no numeric printed page — use
+`page_numbers:"pdf"`. Say which numbering you mean when it is ambiguous.
+
+## The injected reading position
+
+At most one short line per turn may arrive as a user message, e.g.
+
+```
+[dsh-pdf-reader] 正在阅读《book》printed 132 (PDF 152) · Chapter 5 › 5B
+```
+
+It is a **position marker only**. The model decides whether to read anything.
+Do not read a page just because the marker exists; read it when the question
+needs it, and prefer `include_image:false` first.
 
 ## Pitfalls
 
-- **Extracted text garbles math** (`𝒫 𝑛 − 1(𝐂)` for `P_{n−1}(C)`, flattened subscripts, theorem numbers split across lines). Use text only to *locate*; use `pdf_read_pages` to *read* formulas.
-- **Scanned PDFs** have no text layer: `pdf_search` legitimately finds nothing — go straight to `pdf_read_pages`.
-- Errors are coded: `PDF_NOT_FOUND`, `PDF_ENCRYPTED`, `PDF_CORRUPT`, `PDF_READER_INVALID_PAGE`.
-- Page numbers are 1-based everywhere.
-- No note-taking/annotation — this plugin only reads and renders.
+- **Scanned PDFs** have no text layer: `pdf_search` finds nothing and
+  `include_image:false` returns `textUnavailable`. Only images help.
+- Errors are coded: `PDF_NOT_FOUND`, `PDF_NOT_FILE`, `PDF_ENCRYPTED`,
+  `PDF_CORRUPT`, `PDF_READER_INVALID_PAGE`, `PDF_READER_INVALID_SCALE`,
+  `PDF_RENDER_TIMEOUT`, `PDF_PAGE_TOO_LARGE`.
+- Search is literal: it does not unfold hyphenation and is not a regex engine.
+- Page numbers are 1-based; relative paths resolve against the session directory.
+- No annotation/note features: this plugin reads and renders only.
 
-## Fallback (plugin not enabled)
-
-Render directly with the bundled core, then look at the PNG:
+## Fallback (plugin disabled)
 
 ```sh
 node -e "import('./lib/core/render.js').then(async m=>{const r=await m.renderPageToPng('<abs pdf>',344,{scale:2.5});require('fs').writeFileSync('/tmp/p344.png',r.buffer);console.log(r.width+'x'+r.height)})"
 ```
 
-then `read_image('/tmp/p344.png')`. Slower, bypasses the attachment cache — prefer the tools.
+then `read_image('/tmp/p344.png')`. Slower, bypasses the attachment cache —
+prefer the tools.

@@ -1,9 +1,21 @@
 {
-  "name": "dsh-pdf-reader",
-  "version": "0.0.1",
-  "private": true,
-  "description": "Page readout, page jump and share-to-chat for DSH's official PDF preview",
+  "name": "dsh-book-reader",
+  "version": "0.1.0",
+  "description": "Read books and papers in DSH: page-aware controls on the official PDF preview, plus cheap text-first PDF context for the model (TOC, search, selective page images).",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "pdf",
+    "reader",
+    "pdfjs",
+    "vision",
+    "book"
+  ],
   "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.11",
     "pdfjs-dist": "6.3.289"
@@ -39,8 +51,10 @@
     "lib/index.js",
     "lib/client.js",
     "lib/core/**/*.js",
-    "lib/host-README.md",
-    "cordis.patch.yml"
+    "SKILL.md",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
   ],
   "dsh": {
     "bundle": {
@@ -50,5 +64,7 @@
       "platform": "web"
     }
   },
-  "license": "MIT"
+  "publishConfig": {
+    "access": "public"
+  }
 }

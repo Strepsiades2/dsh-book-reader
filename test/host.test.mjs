@@ -407,17 +407,14 @@ await test('renderReadingContext renders a source-attributed printed/PDF message
     title: 'LADR',
     sectionTrail: trail,
   })
-  assert.match(text, /^\[dsh-pdf-reader\] The user is reading "LADR" at printed page 132 \(PDF 152\)/u)
+  assert.match(text, /^\[dsh-pdf-reader\] 正在阅读《LADR》printed 132 \(PDF 152\)/u)
   assert.match(text, /5B The Minimal Polynomial/u)
-  assert.match(text, /call pdf_read_pages with path:"\/books\/Linear Algebra Done Right\.pdf" and pages:"132"/u)
-  assert.match(text, /当前页/u)
-  assert.equal(text.split('\n').length, 2)
+  assert.equal(text.split('\n').length, 1, 'position marker is a single line')
 })
 
 await test('renderReadingContext falls back to a PDF page number with page_numbers:"pdf"', () => {
   const text = host.renderReadingContext({ path: '/tmp/book.pdf', pdfPage: 7 })
-  assert.match(text, /reading "book" at PDF page 7/u)
-  assert.match(text, /pages:"7", page_numbers:"pdf"/u)
+  assert.match(text, /正在阅读《book》PDF 7/u)
 })
 
 await test('printedPageFor prefers reported labels, then the label map, then the body offset', () => {
@@ -440,10 +437,9 @@ await test('printedPageFor prefers reported labels, then the label map, then the
   assert.equal(host.printedPageFor(null, 22), null)
 })
 
-await test('a roman printed label appears in prose but the hint falls back to the PDF page', () => {
+await test('a roman printed label appears in the injected position message', () => {
   const text = host.renderReadingContext({ path: '/tmp/book.pdf', pdfPage: 5, printedPage: 'v' })
-  assert.match(text, /at printed page v \(PDF 5\)/u)
-  assert.match(text, /pages:"5", page_numbers:"pdf"/u)
+  assert.match(text, /printed v \(PDF 5\)/u)
   assert.doesNotMatch(text, /pages:"v"/u)
 })
 
@@ -641,7 +637,7 @@ await test('createAutoShareListener appends exactly one source-attributed messag
   assert.equal(first.messages[0].role, 'user')
   assert.equal(first.messages[0].source.kind, 'pdf-reader')
   assert.equal(first.messages[0].source.form, 'snapshot')
-  assert.match(first.messages[0].content[0].text, /printed page 132 \(PDF 152\)/u)
+  assert.match(first.messages[0].content[0].text, /printed 132 \(PDF 152\)/u)
   assert.match(first.messages[0].content[0].text, /Chapter 5 Eigenvalues and Eigenvectors/u)
   assert.equal(first.kind, 'accept')
 
@@ -653,7 +649,7 @@ await test('createAutoShareListener appends exactly one source-attributed messag
   positions.record({ path: PDF, pdfPage: 153, printedPage: 133, sessionId: 's1' })
   const moved = await listener({ ...payload, step: 3 }, async () => ({ kind: 'accept', messages: [] }))
   assert.equal(moved.messages.length, 1)
-  assert.match(moved.messages[0].content[0].text, /printed page 133 \(PDF 153\)/u)
+  assert.match(moved.messages[0].content[0].text, /printed 133 \(PDF 153\)/u)
 
   const otherSession = await listener(
     { ...payload, agent: { session: { id: 's2' } } },
