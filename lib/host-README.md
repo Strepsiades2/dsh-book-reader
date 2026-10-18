@@ -75,7 +75,7 @@ Returns:
 UTF-16 offset into the whitespace-normalized page text and is omitted if the
 core does not provide it.
 
-### `pdf_read_pages({ path, pages, page_numbers?, scale?, crop?, include_text? })`
+### `pdf_read_pages({ path, pages, page_numbers?, scale?, crop?, image_quality?, include_text? })`
 
 The only image-returning tool. Renders each requested page, saves it through
 `ctx.attachments.saveImage`, and returns a native `{ type: "image" }` block per
@@ -84,10 +84,11 @@ page beside a short text envelope.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `path` | string | — | Absolute `.pdf` path, or session-relative. |
-| `pages` | string \| array | — | `"132-134"`, `"132,135"`, `[132,133,134]`, or an array of range strings. Deduplicated and sorted. |
+| `pages` | string \| integer \| array | — | `"132-134"`, `"132,135"`, `132`, `[132,133,134]`, or an array of range strings. Deduplicated and sorted. |
 | `page_numbers` | `"printed"` \| `"pdf"` | auto | `"printed"` when `pdf_info` reports numeric labels/offset, else `"pdf"`. |
-| `scale` | number | `2` | `1`–`3`. `2` is about 144 DPI; use `3` with `crop` for dense subscripts. |
-| `crop` | string \| number[4] | none | `"x0,y0,x1,y1"` fractions with a top-left origin, e.g. `"0,0,1,0.55"`. Converted to the core's `{x,y,w,h}`. |
+| `scale` | number | `2.5` | `1`–`3`. `2.5` is about 180 DPI (the skill's default); use `3` with `crop` for dense subscripts. |
+| `crop` | string \| number[4] \| object | none | Fractions with a top-left origin: `"x0,y0,x1,y1"`, `[x0,y0,x1,y1]`, or `{x,y,w,h}`. Normalized to the core's `{x,y,w,h}`. |
+| `image_quality` | `"cheap"` \| `"standard"` | `"standard"` | `"cheap"` renders at 1.5× (about 350 tokens/page, prose only); `"standard"` uses `defaultScale` (about 900 tokens/page). An explicit `scale` wins. |
 | `include_text` | boolean | `true` | Include up to `maxTextCharsPerPage` characters of extracted text per page. |
 
 Hard cap: `maxPagesPerCall` (default **4**, maximum configurable **8**). Exceeding
@@ -111,9 +112,9 @@ Returns:
       "image": {
         "attachmentId": "…",
         "mediaType": "image/png",
-        "bytes": 497565,
-        "width": 750,
-        "height": 1272,
+        "bytes": 713136,
+        "width": 938,
+        "height": 1590,
         "name": "Linear_Algebra_Done_Right-p152.png"
       },
       "text": "Chapter 5 Eigenvalues and Eigenvectors …",
@@ -186,6 +187,18 @@ Failure bodies are `{ "ok": false, "error": "<token>" }` with status 400/403/404
 `unsupported-media-type`, `body-too-large`, `invalid-json`, `invalid-page`,
 `invalid-session-id`, `invalid-printed-page`, `info-failed`, `search-failed`,
 `route-failed`, `not-found`.
+
+Tool failures preserve the core's coded error names where the core raises
+them: `PDF_NOT_FOUND`, `PDF_ENCRYPTED`, `PDF_CORRUPT`, `PDF_NOT_READABLE`,
+`PDF_UNREADABLE`, `PDF_LOAD_TIMEOUT`, `PDF_PAGE_OUT_OF_RANGE` (from deep core
+calls). The host adds `PDF_NOT_FILE`, `PDF_READER_INVALID_PATH`,
+`PDF_READER_INVALID_PAGE`, `PDF_READER_TOO_MANY_PAGES`,
+`PDF_READER_INVALID_PAGE_MODE`, `PDF_READER_NO_PRINTED_PAGES`,
+`PDF_READER_INVALID_CROP`, `PDF_READER_INVALID_SCALE`,
+`PDF_READER_FILE_TOO_LARGE`, `PDF_READER_NO_IMAGE_ROUTE`,
+`PDF_READER_NO_IMAGE_INPUT`, `PDF_READER_NO_ATTACHMENTS`,
+`PDF_READER_RENDER_FAILED`, `PDF_READER_ATTACHMENT_FAILED`, and
+`PDF_READER_IMAGE_TOO_LARGE`.
 
 ### `GET /dsh-pdf-reader/info?path=<absolute .pdf>`
 
@@ -325,7 +338,7 @@ All keys are optional. The same defaults are applied by the loader schema and by
 | `autoShareMinSteps` | `1` | 1–1000 | Minimum step distance within one turn. |
 | `autoShareMaxAgeMs` | `0` | 0–31536000000 | Ignore positions older than this; `0` = no limit. |
 | `maxPagesPerCall` | `4` | 1–8 | Hard image cap for `pdf_read_pages`. |
-| `defaultScale` | `2` | 1–3 | Default render scale (~144 DPI at 2). |
+| `defaultScale` | `2.5` | 1–3 | Default render scale (~180 DPI at 2.5). |
 | `maxTextCharsPerPage` | `1200` | 0–100000 | Text kept per page; `0` disables text. |
 | `maxSearchResults` | `100` | 1–500 | Cap for tool and route search limits. |
 | `maxOutlineEntries` | `500` | 1–5000 | Route outline cap (`pdf_info` also caps at 200). |
@@ -388,7 +401,7 @@ Plain-`node` tests (no harness, no core required):
 
 ```sh
 node dsh-pdf-reader/test/host.test.mjs
-# all 34 host tests passed
+# all 39 host tests passed
 ```
 
 The tests import the real `lib/index.js`, stubbing only the three host-provided
@@ -399,7 +412,7 @@ hardening, route responses, tool registration, and the image-bearing read tool.
 A separate real-core integration run against
 `Linear Algebra Done Right-Springer (2024).pdf` verified `getInfo` (410 pages,
 offset +20, 169 outline entries), search, printed→PDF translation (printed
-132/133 → PDF 152/153), real 750×1272 PNG rendering through a fake attachment
+132/133 → PDF 152/153), real 938×1590 PNG rendering at the 2.5× default through a fake attachment
 store, `POST/GET /current`, `pdf_current_page`, and one injected pre-step
 message. That run used Electron's Node so the installed `defineTool` and
 Schemastery validated the real schemas, but it did **not** run the DSH agent

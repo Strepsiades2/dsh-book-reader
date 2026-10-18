@@ -149,6 +149,7 @@ const {
   buildShareReference,
   createDebouncer,
   createRafThrottle,
+  describeSearchFailure,
   displayPage,
   insertComposerText,
   isPdfPath,
@@ -209,6 +210,10 @@ assert.equal(buildSearchReference({ pdf: 10, snippet: '' }), '[PDF p.10]')
 assert.equal(searchResultLabel({ pdf: 152, printed: 132 }), 'p.132')
 assert.equal(searchResultLabel({ pdf: 152 }), 'p.152')
 assert.ok(buildSearchReference({ pdf: 1, snippet: 'x'.repeat(400) }).length <= 'PDF p.1: '.length + 160)
+assert.match(describeSearchFailure({ error: 'no-text-layer' }, 500), /no text layer/)
+assert.ok(describeSearchFailure({ error: 'search-failed', detail: 'x'.repeat(500) }, 500).length <= 180,
+  'a long Host detail is truncated for the quiet panel')
+assert.match(describeSearchFailure({}, 404), /HTTP 404/)
 
 // The composer path is captureInsertion() + insertText(text, span), never setDraft.
 {
@@ -696,5 +701,37 @@ await React.act(async () => {
 assert.equal(document.querySelector('[data-dsh-pdf-reader="panel"]'), null)
 await React.act(async () => { nonPdfRoot.unmount() })
 
+// In-flight info/search requests are aborted on unmount, not left to settle.
+const pendingSignals = []
+globalThis.fetch = (url, options = {}) => {
+  pendingSignals.push({ url: String(url), signal: options.signal })
+  return new Promise(() => {})
+}
+scroll.top = 0
+const abortRoot = createRoot(header)
+await React.act(async () => {
+  abortRoot.render(React.createElement(contribution.component, {
+    absolutePath: `/tmp/dsh-pdf-reader-abort-${Date.now()}.pdf`,
+    sessionId: 'session-test',
+    inputActions,
+  }))
+  await sleep(30)
+})
+await React.act(async () => {
+  header.querySelector('[data-dsh-pdf-reader="search"]').click()
+  await sleep(10)
+})
+await React.act(async () => {
+  const abortSearch = header.querySelector('[data-dsh-pdf-reader="panel"] input[type="search"]')
+  const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set
+  setter.call(abortSearch, 'pending')
+  abortSearch.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+  await sleep(260)
+})
+assert.ok(pendingSignals.length >= 2, 'info and search requests were issued')
+await React.act(async () => { abortRoot.unmount() })
+assert.ok(pendingSignals.every((entry) => entry.signal?.aborted === true), 'unmount aborts every in-flight fetch')
+
 console.log('dsh-pdf-reader: client bundle OK — slot registration, numbering, '
-  + 'composer insertion, debounce/throttle, live scroll/jump/search/report/cleanup')
+  + 'composer insertion, debounce/throttle, live scroll/jump/search/report/cleanup, '
+  + 'missing-route/non-PDF tolerance, abort-on-unmount')

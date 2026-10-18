@@ -172,6 +172,10 @@ build and could be renamed by an upgrade.
 node dsh-pdf-reader/test/client.test.mjs
 ```
 
+It reuses the `jsdom`/React install under `dsh-pdf-search/node_modules` (the
+same packages the earlier prototype test used), so run it from a workspace where
+that sibling still exists.
+
 The test loads the real bundle through a fake `window.__ModuleLoader__`, checks
 the slot registration, page numbering/parsing, composer payload and
 `captureInsertion`/`insertText` use, debounce/throttle timing, DOM marker
@@ -179,3 +183,19 @@ resolution, inner-scrollport jumping, a live jsdom mount (info → readout →
 report → toggle → jump → share → search → `→ AI` → shortcut → two-preview
 election → cleanup), and quiet behavior for missing Host routes and non-PDF
 paths.
+
+## Verification status (this checkout)
+
+- `node dsh-pdf-reader/test/client.test.mjs` passes.
+- The live app accepted the client's exact `POST /dsh-pdf-reader/current` body
+  (`{"path":…,"pdfPage":152,"printedPage":132,"sessionId":…}`) with
+  `{"ok":true}`, and `GET /current` echoed `pdfPage:152, printedPage:132`.
+- `GET /info` and `GET /search` currently fail in this checkout with a
+  **Host-side** `pdfjs-dist` version mismatch
+  (`API version "6.4.299" does not match the Worker version "6.3.289"`), so the
+  printed-numbering readout and search could only be exercised against fixtures,
+  not end-to-end. The client's missing-route/failure path is tested and degrades
+  quietly.
+- Mounting the slot contribution in the real GUI (header layout at the actual
+  sidebar width, standard props, composer insertion, real lazy PDF rendering)
+  was not verified here; profile install is the Lead's step.

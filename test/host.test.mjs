@@ -296,14 +296,23 @@ await test('parsePageSelection rejects malformed, reversed, empty, fractional, a
   )
 })
 
-await test('parseCrop accepts fractions and rejects malformed or inverted rectangles', () => {
-  assert.deepEqual(host.parseCrop('0,0,1,0.55'), [0, 0, 1, 0.55])
-  assert.deepEqual(host.parseCrop([0, 0.45, 1, 1]), [0, 0.45, 1, 1])
+await test('parseCrop accepts fractions in string, array, and object form', () => {
+  assert.deepEqual(host.parseCrop('0,0,1,0.55'), { x: 0, y: 0, w: 1, h: 0.55 })
+  assert.deepEqual(host.parseCrop([0, 0.45, 1, 1]), { x: 0, y: 0.45, w: 1, h: 0.55 })
+  assert.deepEqual(host.parseCrop({ x: 0.1, y: 0.2, w: 0.5, h: 0.5 }), {
+    x: 0.1,
+    y: 0.2,
+    w: 0.5,
+    h: 0.5,
+  })
   assert.equal(host.parseCrop(undefined), undefined)
   assert.throws(() => host.parseCrop('0,0,0.5'), /exactly four/u)
   assert.throws(() => host.parseCrop('0,0,1.2,1'), /crop must satisfy/u)
   assert.throws(() => host.parseCrop('0.6,0,0.5,1'), /crop must satisfy/u)
   assert.throws(() => host.parseCrop([0, 0, 'x', 1]), /finite numbers/u)
+  assert.throws(() => host.parseCrop({ x: 0, y: 0, w: 0, h: 1 }), /w,h > 0/u)
+  assert.throws(() => host.parseCrop({ x: 0.6, y: 0, w: 0.5, h: 1 }), /x\+w <= 1/u)
+  assert.throws(() => host.parseCrop({ x: 0, y: 0, w: '0.5', h: 1 }), /finite numeric/u)
 })
 
 await test('detectPageMode and resolveRequestedPages translate printed numbers to PDF pages', () => {
@@ -339,6 +348,10 @@ await test('resolveRequestedPages rejects out-of-range pages and too many pages'
   await assertRejectsCode(
     Promise.resolve().then(() => host.resolveRequestedPages({ selection: '1-5', info: INFO, maxPages: 4 })),
     'PDF_READER_TOO_MANY_PAGES',
+  )
+  await assertRejectsCode(
+    Promise.resolve().then(() => host.resolveRequestedPages({ selection: '9999', info: INFO })),
+    'PDF_READER_INVALID_PAGE',
   )
   assert.throws(
     () =>
@@ -1045,6 +1058,38 @@ await test('pdf_read_pages renders printed pages, saves attachments, and emits i
   })
   assert.equal(blocks[3].type, 'text')
   assert.equal(blocks[4].type, 'image')
+})
+
+await test('pdf_read_pages maps image_quality:cheap to 1.5x and otherwise uses the 2.5x default', async () => {
+  const calls = []
+  const build = () =>
+    host.createReadPagesTool({
+      defineTool: (definition) => definition,
+      ctx: makeToolContext({
+        attachments: {
+          async saveImage({ data, mediaType }) {
+            return { attachmentId: 'att', mediaType, bytes: data.byteLength, width: 750, height: 1272 }
+          },
+        },
+      }),
+      config: host.normalizeConfig({}),
+      core: {
+        async renderPagesToPng(path, pages, options) {
+          calls.push(options)
+          return pages.map((pdf) => ({ pdf, printed: pdf, buffer: Buffer.from('png'), width: 750, height: 1272 }))
+        },
+        async getPageText() {
+          return ''
+        },
+      },
+      infoCache: host.createInfoCache({ getInfo: async () => INFO, statFile: async () => PDF_STAT }),
+      statFile: async () => PDF_STAT,
+    })
+
+  await build().execute({ path: PDF, pages: '132', image_quality: 'cheap' }, makeExec())
+  await build().execute({ path: PDF, pages: '132' }, makeExec())
+  assert.equal(calls[0].scale, 1.5)
+  assert.equal(calls[1].scale, 2.5)
 })
 
 await test('pdf_read_pages enforces the per-call cap before rendering', async () => {

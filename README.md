@@ -124,6 +124,18 @@ node test/client.test.mjs  #      浏览器 bundle、槽位注册、页码、插
 
 实测性能（macOS arm64 / Node 24）：冷启 `getInfo` ~94 ms，热 ~0.05 ms；410 页全文搜索 ~0.8 s；渲染单页 ~26 ms，三页 ~66 ms；打开一本书常驻约 130 MB。
 
+## 依赖约束（重要）
+
+`pdfjs-dist` 必须与**同一宿主进程里其他插件用的版本一致**。本机还装着 `dsh-pdf-search`，它依赖 `pdfjs-dist@6.3.289`；两个版本共存时，PDF.js 会报：
+
+```
+The API version "6.4.299" does not match the Worker version "6.3.289"
+```
+
+所以 `package.json` 里把 `pdfjs-dist` **精确 pin 在 `6.3.289`**（不是 `^`）。升级本插件前先确认进程内没有别的版本，或同步升级所有相关插件。
+
+> 改完依赖必须**重启 DSH**：宿主进程的 ESM 模块是加载即缓存，换文件不会热替换。
+
 ## 已知限制
 
 - 只挂在**官方 PDF 预览**（含 Office→PDF 转出来的那个）；图片、Excel、Markdown 预览不受影响。

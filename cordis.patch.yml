@@ -17,6 +17,6 @@
       #   autoSharePageDelta: 1           # require a page change
       #   autoShareMinSteps: 1            # at most once per step
       #   maxPagesPerCall: 4              # hard image cap per tool call
-      #   defaultScale: 2                 # ~144 DPI; 3 for dense subscripts
+      #   defaultScale: 2.5               # ~180 DPI; 3 for dense subscripts
       #   maxSearchResults: 100
       #   maxFileBytes: 268435456         # 256 MiB
