@@ -1,7 +1,7 @@
-# dsh-pdf-reader — host half
+# dsh-book-reader — host half
 
 Model-facing PDF tools, browser-facing JSON routes, and automatic current-page
-context for the `dsh-pdf-reader` plugin. The browser half is `lib/client.js`;
+context for the `dsh-book-reader` plugin. The browser half is `lib/client.js`;
 the PDF engine is `lib/core/pdf.js` + `lib/core/render.js`, imported lazily by
 this entry.
 
@@ -351,7 +351,7 @@ YAML example:
 
 ```yaml
 - id: pdf-reader
-  name: 'dsh-pdf-reader'
+  name: 'dsh-book-reader'
   config:
     autoShare: false
     maxPagesPerCall: 3
@@ -400,7 +400,7 @@ clear `PDF core is unavailable` / `PDF renderer is unavailable` tool error and a
 Plain-`node` tests (no harness, no core required):
 
 ```sh
-node dsh-pdf-reader/test/host.test.mjs
+node dsh-book-reader/test/host.test.mjs
 # all 39 host tests passed
 ```
 

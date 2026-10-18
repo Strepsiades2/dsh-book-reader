@@ -1,6 +1,6 @@
-# dsh-pdf-reader core (`lib/core`)
+# dsh-book-reader core (`lib/core`)
 
-Pure-Node core for the AI-side half of `dsh-pdf-reader`: open a PDF, extract
+Pure-Node core for the AI-side half of `dsh-book-reader`: open a PDF, extract
 text, search it, and render pages to PNG **in-process**. No browser, no Swift,
 no PDFKit, no Python, no shelling out.
 
@@ -287,7 +287,7 @@ starting with `__` as private.
 ## Running the tests
 
 ```sh
-cd dsh-pdf-reader
+cd dsh-book-reader
 node test/core.test.mjs
 ```
 

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Book Reader",
+    "description": "Read books and papers in DSH: page-aware controls on the official PDF preview, plus cheap text-first PDF context for the model (TOC, search, selective page images)."
+  }
+}

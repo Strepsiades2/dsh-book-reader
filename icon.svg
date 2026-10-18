@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Book Reader">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4c6ef5"/>
+      <stop offset="1" stop-color="#364fc7"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="58" height="58" rx="14" fill="url(#bg)"/>
+  <path d="M12 21.5c6.5-3.6 13-3.6 20 0v23c-7-3.2-13.5-3.2-20 0z" fill="#f8f9fa"/>
+  <path d="M52 21.5c-6.5-3.6-13-3.6-20 0v23c7-3.2 13.5-3.2 20 0z" fill="#e9ecef"/>
+  <path d="M32 21.5v23" fill="none" stroke="#adb5bd" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M38.5 17.5h6v13l-3-2.4-3 2.4z" fill="#ffd43b"/>
+</svg>

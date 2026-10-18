@@ -13,6 +13,16 @@
   ],
   "type": "module",
   "license": "MIT",
+  "icon": "./icon.svg",
+  "author": "strepsiades",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/strepsiades/dsh-book-reader.git"
+  },
+  "homepage": "https://github.com/strepsiades/dsh-book-reader#readme",
+  "bugs": {
+    "url": "https://github.com/strepsiades/dsh-book-reader/issues"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -45,7 +55,9 @@
       "default": "./lib/client.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "lib/index.js",
@@ -54,7 +66,10 @@
     "SKILL.md",
     "cordis.patch.yml",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "icon.svg",
+    "locale/*.json",
+    "CHANGELOG.md"
   ],
   "dsh": {
     "bundle": {

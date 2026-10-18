@@ -105,7 +105,7 @@ dom.window.__ModuleLoader__ = {
   },
 }
 new Function(readFileSync(join(root, 'lib/client.js'), 'utf8'))()
-assert.equal(row.id, 'dsh-pdf-reader', 'bundle registers the expected id')
+assert.equal(row.id, 'dsh-book-reader', 'bundle registers the expected id')
 assert.equal(typeof row.factory, 'function', 'factory is a function')
 
 const bundle = row.factory((specifier) => {
@@ -113,14 +113,18 @@ const bundle = row.factory((specifier) => {
   return React
 })
 assert.equal(typeof bundle.apply, 'function')
-assert.deepEqual(bundle.inject, ['slots'])
+assert.deepEqual(bundle.inject, ['slots', 'locale'])
 
 let contribution
+let localeActive = 'zh'
 const calls = []
 const ctx = {
   effect(run) {
     calls.push(['effect'])
     return run()
+  },
+  locale: {
+    getSnapshot: () => ({ active: localeActive }),
   },
   slots: {
     inject(name, run) {
@@ -404,6 +408,67 @@ assert.equal(pageInput.value, '1', 'readout starts on physical page 1 (front mat
 assert.match(header.textContent, /\/ 3/, 'total comes from the Host info route')
 assert.ok(requests.some((entry) => entry.url.startsWith('/dsh-pdf-reader/info?path=')))
 
+// ---------------------------------------------------------------------------
+// Hover explanations: a localized tooltip on pointer hover and keyboard focus.
+// ---------------------------------------------------------------------------
+const prevButton = header.querySelector('[data-dsh-pdf-reader="prev"]')
+const nextButton = header.querySelector('[data-dsh-pdf-reader="next"]')
+const tooltip = () => header.querySelector('[data-dsh-pdf-reader="tip"]')
+const hover = async (element, delay = 260) => {
+  await React.act(async () => {
+    element.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }))
+    await sleep(delay)
+  })
+}
+const leave = async (element) => {
+  await React.act(async () => {
+    element.dispatchEvent(new dom.window.MouseEvent('mouseout', {
+      bubbles: true,
+      relatedTarget: document.body,
+    }))
+    await sleep(20)
+  })
+}
+
+await hover(prevButton)
+assert.ok(tooltip(), 'hovering a control opens its explanation')
+assert.equal(tooltip().getAttribute('role'), 'tooltip')
+assert.match(tooltip().textContent, /上一页/)
+assert.match(tooltip().textContent, /翻到上一页/)
+
+await leave(prevButton)
+assert.equal(tooltip(), null, 'leaving the control hides the explanation')
+
+// A quick pass over the toolbar never opens one.
+await React.act(async () => {
+  nextButton.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }))
+  await sleep(60)
+})
+assert.equal(tooltip(), null, 'a short hover stays quiet')
+await leave(nextButton)
+
+// Keyboard focus opens the same explanation for the page-number control.
+await React.act(async () => {
+  pageInput.dispatchEvent(new dom.window.FocusEvent('focusin', { bubbles: true }))
+  await sleep(260)
+})
+assert.ok(tooltip(), 'focus opens the explanation')
+assert.match(tooltip().textContent, /页码/)
+assert.match(tooltip().textContent, /印刷页码/)
+await React.act(async () => {
+  pageInput.dispatchEvent(new dom.window.FocusEvent('focusout', { bubbles: true }))
+  await sleep(20)
+})
+assert.equal(tooltip(), null, 'blur hides the explanation')
+
+// The explanation follows the DSH UI language instead of hardcoded English.
+localeActive = 'en'
+await hover(nextButton)
+assert.match(tooltip().textContent, /Next page/)
+assert.match(tooltip().textContent, /Go to the next page/)
+await leave(nextButton)
+localeActive = 'zh'
+
 // Reporting starts after the 400 ms debounce and carries the physical page.
 await actWait(450)
 assert.equal(posts.length, 1, 'the initial page is reported once')
@@ -668,7 +733,18 @@ await React.act(async () => {
 assert.match(header.querySelector('[data-dsh-pdf-reader="panel"]').textContent, /Search unavailable/)
 await actWait(450)
 const failingFollow = header.querySelector('[data-dsh-pdf-reader="follow"]')
-assert.match(failingFollow.getAttribute('title'), /unavailable/)
+await React.act(async () => {
+  failingFollow.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }))
+  await sleep(260)
+})
+assert.match(tooltip().textContent, /Host 路由不可用/, 'the explanation reports the failed route')
+await React.act(async () => {
+  failingFollow.dispatchEvent(new dom.window.MouseEvent('mouseout', {
+    bubbles: true,
+    relatedTarget: document.body,
+  }))
+  await sleep(20)
+})
 await React.act(async () => { failingRoot.unmount() })
 assert.equal(header.querySelector('[data-dsh-pdf-reader="controls"]'), null)
 

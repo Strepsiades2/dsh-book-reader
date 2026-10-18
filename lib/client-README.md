@@ -1,4 +1,4 @@
-# dsh-pdf-reader — browser half
+# dsh-book-reader — browser half
 
 Decorates DSH's **official right-sidebar PDF preview**. It does not replace the
 renderer: zoom, fit width, text selection, reload, auto-refresh, and Office→PDF
@@ -24,6 +24,16 @@ The panel lists `p.132 — snippet` results. Clicking a result jumps to that pag
 each result also has a **`→ AI`** button that inserts `PDF p.132: <snippet>` at
 the composer caret. The snippet is whitespace-collapsed and bounded to ~160
 characters.
+
+## Hover explanations
+
+Every control explains itself on hover and on keyboard focus: a small tooltip
+with a title plus one line of guidance (`上一页 / Previous page`,
+`页码 / Page number`, `AI 上下文 / AI context`, …). The text follows the active
+DSH UI language, read through the injected `locale` service; the follow control
+also appends its live state (off / reporting / acknowledged / route failed).
+The tooltip appears after a short delay, hides on leave or blur, and is
+`pointer-events: none` so it never intercepts a click.
 
 ## Keyboard shortcuts
 
@@ -173,7 +183,7 @@ build and could be renamed by an upgrade.
 ## Test
 
 ```sh
-node dsh-pdf-reader/test/client.test.mjs
+node dsh-book-reader/test/client.test.mjs
 ```
 
 It reuses the `jsdom`/React install under `dsh-pdf-search/node_modules` (the
@@ -190,7 +200,7 @@ paths.
 
 ## Verification status (this checkout)
 
-- `node dsh-pdf-reader/test/client.test.mjs` passes.
+- `node dsh-book-reader/test/client.test.mjs` passes.
 - The live app accepted the client's exact `POST /dsh-pdf-reader/current` body
   (`{"path":…,"pdfPage":152,"printedPage":132,"sessionId":…}`) with
   `{"ok":true}`, and `GET /current` echoed `pdfPage:152, printedPage:132`.
