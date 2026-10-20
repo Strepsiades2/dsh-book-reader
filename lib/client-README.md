@@ -16,13 +16,13 @@ For a `.pdf` preview only (matched on the `absolutePath` owner prop):
 |---|---|
 | `‹` / `›` | Previous / next **physical** PDF page (consecutive pages, regardless of printed labels). |
 | `[132] / 410` | Current-page readout that follows scrolling. The box is also the jump box: type a page and press Enter. Shows the printed page when an offset is known, otherwise the physical page. |
-| `⌕` | Opens the search panel. |
+| `⌕` | Opens the find bar. |
 | `AI` + dot | Auto-follow / AI-context reporting toggle. Dot: green = host acknowledged, amber = sending, red = host route failed, faded = off. |
 
-The panel lists `p.132 — snippet` results. Clicking a result jumps to that page;
-each result also has a **`→ AI`** button that inserts `PDF p.132: <snippet>` at
-the composer caret. The snippet is whitespace-collapsed and bounded to ~160
-characters.
+The find bar is a basic in-page search: type a query, `Enter` / `Shift+Enter`
+(or the `‹` / `›` buttons) jump between occurrences with an `n / total` counter.
+Matches are highlighted on the page's text layer (active one stronger); there is
+no result list, no snippet, and no composer insertion.
 
 ## Hover explanations
 
@@ -38,14 +38,35 @@ The tooltip appears after a short delay, hides on leave or blur, and is
 
 | Keys | Action |
 |---|---|
-| `Cmd/Ctrl + Shift + F` | Open the search panel for the preview the pointer last claimed; focuses and selects the query. |
-| `Esc` | Close the panel (or cancel the page box / panel input). |
+| `Cmd/Ctrl + F` (with or without `Shift`) | Open the find bar for the preview the pointer last claimed; focuses and selects the query. The plain chord is intercepted before the browser's own find. |
+| `Esc` | Close the find bar (or cancel the page box / panel input). |
 | `Enter` in the page box | Jump. Plain numbers are printed pages when the offset is known; prefix `p` for physical. |
-| `Enter` in the search box | Jump to the first result. |
-| `Cmd/Ctrl + F` | **Deliberately not intercepted.** `dsh-pdf-search` and the browser keep it. |
+| `Enter` / `Shift+Enter` in the find bar | Next / previous occurrence (wraps). |
 
 With several PDF previews open, the chord is answered by the preview the user
 last pointed at or focused. Buttons in every preview still work independently.
+
+## Search and highlights
+
+- Query changes are debounced (220 ms) and call
+  `GET /dsh-pdf-reader/search` with `ignoreCase=1&limit=100`; stale requests are
+  aborted. Only the `pdf` page number of each hit is used — snippets are ignored.
+- All matches are highlighted with the CSS Custom Highlight API
+  (`dsh-book-reader-search`, translucent yellow) and the current occurrence with
+  a second highlight (`dsh-book-reader-search-active`, orange); an idempotent
+  `<style>` tag supplies the `::highlight(...)` rules. Without the API, the
+  overlapping spans get `.dsh-book-reader-search-hit` /
+  `-active-hit` classes instead.
+- Ranges are built from the rendered page's `[data-pdf-text]` text nodes: a
+  TreeWalker concatenates them, a length-preserving case fold finds literal
+  matches, and global offsets map back to nodes for `Range`s. The active
+  occurrence is the hit's ordinal among earlier hits on the same page; if the
+  client finds fewer matches than the Host, everything is still highlighted and
+  the first one becomes active.
+- Page text layers render lazily and rebuild on zoom, so highlights retry for up
+  to 3 s after a jump and a debounced MutationObserver on the preview body
+  rebuilds them when pages render. All highlights, timers, and observers are
+  cleared on close, query change, path change, and unmount.
 
 ## Page numbering
 
@@ -68,25 +89,6 @@ Jump-box input:
 - `p152`, `p.152`, `PDF 152`, `#152` → always PDF 152;
 - values outside `1..pageCount` are rejected with a quiet message rather than
   clamped, so a mistyped printed page cannot silently land on page 410.
-
-## Composer insertions
-
-The contribution is a **Session-scoped** slot entry, so it receives the standard
-`sessionId` and `inputActions` props. Insertion is:
-
-```js
-const span = inputActions.captureInsertion()
-inputActions.insertText(text, span)
-```
-
-This inserts one undoable plain-text edit at the draft selection only while the
-captured revision is current. The plugin never calls `setDraft`, so the user's
-draft is preserved. If the composer rejects the edit (busy/submitting) or the
-standard props are missing, the reference is copied to the clipboard instead and
-the header flashes `(copied)` / `Composer busy`.
-
-Search-result payloads use the printed page when the Host supplies one:
-`PDF p.132: singular value decomposition`.
 
 ## Remembered page and zoom
 
@@ -139,7 +141,7 @@ scrolls.
 - `GET /dsh-pdf-reader/info?path=<abs>` — fetched once per PDF, cached for up to
   16 paths; falls back to the DOM's last `[data-pdf-page]` when unavailable.
 - `GET /dsh-pdf-reader/search?path=<abs>&q=<str>&ignoreCase=1&limit=100` — 220 ms
-  debounce, stale requests aborted.
+  debounce, stale requests aborted; the find bar uses only each hit's `pdf` page.
 - `POST /dsh-pdf-reader/current` — 400 ms debounce, one in-flight POST.
 
 All fetches are same-origin and relative. A missing/not-yet-mounted Host route
@@ -159,7 +161,7 @@ build and could be renamed by an upgrade.
 | The preview body is marked `data-textpreview-body`, and the real scroll container is the inner `data-document-zoom-scrollport`. | README §How it reads (“each renderer … may own an inner scrollport”); `dsh-pdf-search/src/client/action.ts:162-192` resolves exactly these markers. |
 | Pages are `[data-pdf-page]` wrappers; all page wrappers exist up front and off-screen content is a 3:4 placeholder. | README: “pages form a vertical sequence … pages render lazily near the viewport; an unrendered page holds its place as a quiet 3:4 placeholder block.” The built PDF body maps every page number to a `PdfPage` wrapper carrying `data-pdf-page`. |
 | Jumping must write the **inner** scrollport, then the renderer's `IntersectionObserver` draws the lazy page. | `dsh-pdf-search/src/client/action.ts:119-127` (scrollPageIntoView) and `test/scroll-navigation.test.mjs:130-140` (asserts the scrollport, not the body, moves). |
-| Composer insertion is `captureInsertion()` + `insertText(text, span)`, one undoable edit while the revision is current. | `dsh-client-ui-conversation/README.md:165`; the built input shell maps those to `caretSpan()` + `insertAsyncText()`. |
+| The rendered page's selectable text layer lives under `[data-pdf-text]` and exists only for pages rendered so far; zooming rebuilds it. | The preview's `client.pdf.js` `pdfTextRenderer` appends `TextLayerBuilder` output to the `[data-pdf-text]` container, and `PdfPage` creates it only while rendering. |
 
 ## Performance on a 410-page book
 
@@ -169,7 +171,8 @@ build and could be renamed by an upgrade.
   visibility change, page render that changes the page-section height), coalesced
   by a 120 ms debounce. A structural observer watches for a replaced preview
   body/scrollport, not for every lazy canvas.
-- Search results are capped at 100, so the panel never renders 410 rows.
+- Search hits are capped at 100 by the Host; highlight rebuilding is debounced
+  (60 ms) and only touches pages that have hits.
 
 ## Known limits
 
@@ -186,24 +189,21 @@ build and could be renamed by an upgrade.
 - **Offset trust.** `printedOffset` is assumed to mean
   `physical = printed + offset` (the `pdfkit info` convention). A Host that
   returns the opposite convention would invert the readout.
-- **Scanned PDFs.** Search returns no matches / a “no text layer” message;
-  readout, jump, and AI insertion still work because they use page
-  wrappers, not extractable text.
-- **Search is case-insensitive substring matching** (`ignoreCase=1`), limited to
-  100 hits; no regex, whole-word, or match navigation inside a page.
+- **Scanned PDFs.** Search returns no matches / a “no text layer” message, so
+  there is nothing to highlight; the readout and jump still work because they use
+  page wrappers, not extractable text.
+- **Search is case-insensitive substring matching** (`ignoreCase=1`), capped at
+  100 hits; no regex, whole-word mode, or hyphenation unfolding.
 - **Follow preference is page-lifetime and global** across open PDF previews; it
   is not stored.
 - **The info cache is keyed by path**, so replacing a PDF at the same path while
   the page is open can leave a stale page count/offset until reload.
-- **Both search panels are fixed at the top-right.** If this panel and
-  `dsh-pdf-search`'s find bar are open together they overlap visually; their
-  shortcuts and DOM are otherwise independent. The shortcuts are deliberately
-  different (`Cmd/Ctrl+Shift+F` here, `Cmd/Ctrl+F` there).
-- **Composer integration requires the session composer.** Without it (or while it
-  refuses edits), the fallback is the clipboard, not a draft rewrite.
+- **The find bar is fixed at the top-right.** If another PDF add-on binds
+  `Cmd/Ctrl+F` too, the last registered document capture listener runs first;
+  uninstall the other add-on if the shortcut feels contested.
 - **Live GUI verification is still required** (profile install is the Lead's
-  step): the slot prop shape, shortcut arbitration against `dsh-pdf-search`, and
-  real PDF.js lazy rendering are covered only by the headless tests here.
+  step): the slot prop shape, shortcut arbitration, and real PDF.js lazy
+  rendering plus highlight painting are covered only by the headless tests here.
 
 ## Test
 
@@ -216,22 +216,24 @@ same packages the earlier prototype test used), so run it from a workspace where
 that sibling still exists.
 
 The test loads the real bundle through a fake `window.__ModuleLoader__`, checks
-the slot registration, page numbering/parsing, composer payload and
-`captureInsertion`/`insertText` use, debounce/throttle timing, DOM marker
-resolution, inner-scrollport jumping, a live jsdom mount (info → readout →
-report → toggle → jump → search → `→ AI` → shortcut → two-preview
-election → cleanup), saved-page/zoom restore (held GET, wheel dispatch, gated
-persistence), and quiet behavior for missing Host routes and non-PDF paths.
+the slot registration, page numbering/parsing, debounce/throttle timing, DOM
+marker resolution, inner-scrollport jumping, a live jsdom mount (info → readout →
+report → toggle → jump → find bar navigation → shortcut → two-preview
+election → cleanup), in-page search highlights (fake CSS Highlight API and span
+fallback, active occurrence, text-layer re-render), saved-page/zoom restore
+(held GET, wheel dispatch, gated persistence), and quiet behavior for missing
+Host routes and non-PDF paths.
 
 ## Verification status
 
 - `node test/client.test.mjs` passes, including the saved-page/zoom restore,
-  gating and persistence tests.
+  gating and persistence tests plus the in-page search highlight tests.
 - The restore path uses private renderer markers and behaviour observed in DSH
   0.2.1-rc.2 (`[data-document-zoom-frame]`, the inline `--document-zoom`, the
-  `ctrl+wheel` listener). Headless jsdom tests simulate that renderer; a real
-  GUI check of the restored scroll position and zoom after reopening a book is
-  still required.
+  `ctrl+wheel` listener), and highlights use the rendered `[data-pdf-text]` text
+  layer plus the Chromium CSS Custom Highlight API. Headless jsdom tests simulate
+  both; a real GUI check of restored page/zoom and painted highlights is still
+  required.
 - The live app accepted the client's `POST /current` and `POST /view` bodies in
   manual runs. Mounting the contribution in the real GUI (header layout at the
   actual sidebar width, standard props, composer insertion, real lazy PDF

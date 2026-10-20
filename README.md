@@ -31,7 +31,7 @@ ln -sfn "<installed package dir>" "<workspace>/.dsh/skills/pdf-reader"
 | | Feature | What it does |
 | --- | --- | --- |
 | 🧭 | Navigation | Previous/next page, page readout, jump box (printed page, or `p152` for PDF page 152) |
-| 🔎 | Search | Full-text search (`Cmd/Ctrl+Shift+F`); jump to a hit or insert its reference into the chat |
+| 🔎 | Search | Full-text search (`Cmd/Ctrl+F`) with in-page highlights; `Enter` / `Shift+Enter` jump between occurrences, no snippets |
 | 🤖 | AI position hint | One short “you are reading page N” line per turn, only when the page changed (`AI●` toggle) |
 | 💾 | Reading memory | Remembers page and zoom per book; restores them when you reopen it |
 | 💬 | Tooltips | Hover/focus explanations on every control, English or Chinese |
@@ -68,7 +68,7 @@ The full list with defaults is in [`cordis.patch.yml`](cordis.patch.yml).
 
 **The toolbar does not appear.** Only `.pdf` previews get it (not `.docx`/`.pptx`/images). Update/reinstall the plugin and restart DSH.
 
-**The model does not know my page.** The hint is sent at most once per turn and only when the page changed; turn on `AI●`, or mention the page/quote a search result.
+**The model does not know my page.** The hint is sent at most once per turn and only when the page changed; turn on `AI●`, or mention the page in your message.
 
 **Scanned PDFs.** No text layer: search finds nothing and text reads are empty. Page images still work — check `textCoverage.isLikelyScanned` from `pdf_info`.
 

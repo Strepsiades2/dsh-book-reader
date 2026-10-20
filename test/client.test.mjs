@@ -4,10 +4,10 @@
  * The real `lib/client.js` is loaded through a fake
  * `window.__ModuleLoader__.load`, exactly like the page does. The first half
  * checks the module shape, slot registration, and the pure helpers (page
- * numbering, reference payloads, insertion, debounce/throttle). The second
- * half mounts the contribution in jsdom, supplies the official preview's DOM
- * markers and fake rectangles, and drives scroll, jump, search, the
- * Cmd/Ctrl+Shift+F shortcut, reporting, the follow toggle, and unmount.
+ * numbering, case folding, debounce/throttle). The second half mounts the
+ * contribution in jsdom, supplies the official preview's DOM markers and fake
+ * rectangles, and drives scroll, jump, search (including in-page highlights),
+ * the Cmd/Ctrl+F shortcut, reporting, the follow toggle, and unmount.
  *
  * jsdom has no layout engine, so every rectangle and scroll offset is supplied
  * by this file; that is also what makes the assertions deterministic.
@@ -34,8 +34,8 @@ const dom = new JSDOM(`<!doctype html><html><body>
         <div data-document-zoom-scrollport id="scrollport">
           <section data-pdf-preview id="pages">
             <div data-pdf-page="1"><div class="placeholder"></div></div>
-            <div data-pdf-page="2"><div class="placeholder"></div></div>
-            <div data-pdf-page="3"><div class="placeholder"></div></div>
+            <div data-pdf-page="2"><div data-pdf-text><span>Alpha </span><span>beta alpha</span></div></div>
+            <div data-pdf-page="3"><div data-pdf-text><span>gamma alpha delta</span></div></div>
           </section>
         </div>
       </div>
@@ -152,13 +152,14 @@ assert.equal(typeof calls[2][2], 'function')
 contribution = { options: calls[2][1], component: calls[2][2] }
 
 const {
-  buildSearchReference,
+  SEARCH_ACTIVE_HIGHLIGHT_NAME,
+  SEARCH_HIGHLIGHT_NAME,
   clampZoomScale,
   createDebouncer,
   createRafThrottle,
   describeSearchFailure,
   displayPage,
-  insertComposerText,
+  foldSearchText,
   isPdfPath,
   normalizeSnippet,
   normalizeView,
@@ -171,11 +172,10 @@ const {
   resolveScrollport,
   resolveZoomFrame,
   scrollPageIntoView,
-  searchResultLabel,
 } = bundle.__test
 
 // ---------------------------------------------------------------------------
-// Pure helpers: numbering, parsing, reference payloads, insertion.
+// Pure helpers: numbering, parsing, case folding.
 // ---------------------------------------------------------------------------
 assert.equal(isPdfPath('/tmp/book.pdf'), true)
 assert.equal(isPdfPath('/tmp/book.PDF'), true)
@@ -209,47 +209,15 @@ assert.equal(parsePageInput('410', { printedOffset: 20, pageCount: 410 }), undef
 assert.equal(parsePageInput('410', { printedOffset: 0, pageCount: 410 }), 410)
 
 assert.equal(normalizeSnippet('  the   singular\nvalue  '), 'the singular value')
-assert.equal(
-  buildSearchReference({ pdf: 152, printed: 132, snippet: '  singular   value\n decomposition ' }),
-  'PDF p.132: singular value decomposition',
-)
-assert.equal(buildSearchReference({ pdf: 10, snippet: '' }), '[PDF p.10]')
-assert.equal(searchResultLabel({ pdf: 152, printed: 132 }), 'p.132')
-assert.equal(searchResultLabel({ pdf: 152 }), 'p.152')
-assert.ok(buildSearchReference({ pdf: 1, snippet: 'x'.repeat(400) }).length <= 'PDF p.1: '.length + 160)
 assert.match(describeSearchFailure({ error: 'no-text-layer' }, 500), /no text layer/)
 assert.ok(describeSearchFailure({ error: 'search-failed', detail: 'x'.repeat(500) }, 500).length <= 180,
   'a long Host detail is truncated for the quiet panel')
 assert.match(describeSearchFailure({}, 404), /HTTP 404/)
 
-// The composer path is captureInsertion() + insertText(text, span), never setDraft.
-{
-  const span = { start: 4, end: 4, draftRev: 7 }
-  let received
-  const actions = {
-    captureInsertion: () => span,
-    insertText(text, at) {
-      received = { text, at }
-      return true
-    },
-    setDraft() {
-      throw new Error('the reader must never replace the draft')
-    },
-  }
-  assert.equal(insertComposerText(actions, 'PDF p.132: x'), true)
-  assert.equal(received.text, 'PDF p.132: x')
-  assert.equal(received.at, span)
-}
-assert.equal(insertComposerText(undefined, 'x'), false)
-assert.equal(insertComposerText({}, 'x'), false)
-assert.equal(insertComposerText({
-  captureInsertion: () => ({}),
-  insertText: () => false,
-}, 'x'), false)
-assert.equal(insertComposerText({
-  captureInsertion: () => ({}),
-  insertText: () => { throw new Error('busy') },
-}, 'x'), false)
+// Highlight matching folds case the same way on the query and the text layer.
+assert.equal(foldSearchText('Alpha BETA'), 'alpha beta')
+assert.equal(foldSearchText('İ').length, 1, 'folding never changes offsets')
+assert.equal(foldSearchText(undefined), '')
 
 // Binary page selection over cached content offsets, O(log n).
 assert.equal(pickPage([], { top: 0, height: 800 }), undefined)
@@ -387,10 +355,39 @@ const posts = []
 const viewGets = []
 const viewPosts = []
 const info = { ok: true, path, pageCount: 3, printedOffset: 1, outline: [] }
+// One hit per page; the snippet is deliberately absent from the find bar.
 const searchHits = [
-  { pdf: 2, printed: 1, snippet: '  alpha   beta ' },
-  { pdf: 3, printed: 2, snippet: 'gamma delta' },
+  { pdf: 2, printed: 1 },
+  { pdf: 3, printed: 2 },
 ]
+
+// A deterministic stand-in for Chromium's CSS Custom Highlight API. jsdom has
+// no `CSS.highlights`, so the bundle must feature-detect this shape and fall
+// back to span classes when `Highlight` is removed.
+const highlightRegistry = new Map()
+class FakeHighlight {
+  constructor(...ranges) {
+    this.ranges = ranges
+  }
+}
+globalThis.CSS = { ...(globalThis.CSS ?? {}), highlights: {
+  set(name, highlight) {
+    highlightRegistry.set(name, highlight)
+    return this
+  },
+  delete(name) {
+    return highlightRegistry.delete(name)
+  },
+  clear() {
+    highlightRegistry.clear()
+  },
+} }
+globalThis.Highlight = FakeHighlight
+/** @returns the page number owning a Range's start. */
+const rangePage = (range) => range?.startContainer?.parentElement
+  ?.closest('[data-pdf-page]')
+  ?.getAttribute('data-pdf-page')
+
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url)
   requests.push({ url: target, options })
@@ -587,73 +584,194 @@ await React.act(async () => {
 assert.ok(Math.abs(scroll.top - 592) < 1)
 assert.equal(body.scrollTop, 0)
 
-// Search opens, queries after the debounce, lists p.N — snippet, and AI inserts.
+// Search opens as a basic find bar: type, wait for the debounce, then step
+// through highlighted occurrences; there are no result rows or snippets.
 await React.act(async () => {
   header.querySelector('[data-dsh-pdf-reader="search"]').click()
   await sleep(10)
 })
-const panel = header.querySelector('[data-dsh-pdf-reader="panel"]')
-assert.ok(panel, 'the search panel opened')
-const searchInput = panel.querySelector('input[type="search"]')
+const panel = () => header.querySelector('[data-dsh-pdf-reader="panel"]')
+const countText = () => panel().querySelector('[data-dsh-pdf-reader="search-count"]').textContent
+assert.ok(panel(), 'the search panel opened')
+assert.equal(countText(), '0 / 0', 'an empty find bar starts at zero')
+assert.match(panel().textContent, /Enter 下一个/, 'the find bar explains the sequential keys')
+const searchInput = () => panel().querySelector('input[type="search"]')
 await React.act(async () => {
   const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set
-  setter.call(searchInput, 'alpha')
-  searchInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
+  setter.call(searchInput(), 'alpha')
+  searchInput().dispatchEvent(new dom.window.Event('input', { bubbles: true }))
   await sleep(280)
 })
 const searchRequest = requests.filter((entry) => entry.url.startsWith('/dsh-pdf-reader/search')).at(-1)
 assert.match(searchRequest.url, /ignoreCase=1/)
 assert.match(searchRequest.url, /limit=100/)
-assert.match(panel.textContent, /p\.1 — alpha beta/)
-assert.match(panel.textContent, /→ AI/)
+assert.match(searchRequest.url, /q=alpha/)
+assert.equal(countText(), '1 / 2', 'the first hit becomes current')
+assert.equal(searchInput().value, 'alpha')
+assert.equal(panel().querySelectorAll('[data-dsh-pdf-reader="result"]').length, 0, 'no result rows remain')
+assert.equal(panel().querySelectorAll('[data-dsh-pdf-reader="result-ai"]').length, 0, 'no → AI buttons remain')
+assert.equal(panel().querySelector('ul'), null, 'the result list is gone')
+assert.ok(!panel().textContent.includes('→ AI'), 'the find bar has no composer insertion')
+assert.ok(!panel().textContent.includes('alpha beta'), 'the find bar shows no snippets')
+assert.equal(insertions.length, 0, 'search never touches the composer')
+assert.ok(Math.abs(scroll.top - 592) < 1, 'the first hit jumps to physical page 2')
+assert.equal(pageInput.value, '1', 'the readout follows the hit')
 
+// The CSS Custom Highlight API receives every case-insensitive match plus the
+// first occurrence as the stronger active highlight.
+const allHighlight = highlightRegistry.get(SEARCH_HIGHLIGHT_NAME)
+assert.ok(allHighlight, 'all matches are registered')
+assert.equal(allHighlight.ranges.length, 3, 'two matches on page 2 and one on page 3')
+const activeHighlight = highlightRegistry.get(SEARCH_ACTIVE_HIGHLIGHT_NAME)
+assert.ok(activeHighlight, 'the active occurrence is registered separately')
+assert.equal(activeHighlight.ranges.length, 1)
+assert.equal(rangePage(activeHighlight.ranges[0]), '2')
+assert.equal(activeHighlight.ranges[0].toString(), 'Alpha',
+  'matching ignores case while the highlight keeps the page text')
+assert.equal(
+  document.getElementById('dsh-book-reader-search-highlight-style')?.tagName,
+  'STYLE',
+  'the ::highlight stylesheet is injected once',
+)
+
+// A zoom re-render replaces a page's text layer; the MutationObserver rebuilds
+// the Ranges against the new nodes.
 await React.act(async () => {
-  panel.querySelectorAll('[data-dsh-pdf-reader="result-ai"]')[0].click()
-  await sleep(10)
+  const pageTwo = document.querySelector('[data-pdf-page="2"]')
+  pageTwo.querySelector('[data-pdf-text]').remove()
+  const fresh = document.createElement('div')
+  fresh.setAttribute('data-pdf-text', '')
+  fresh.innerHTML = '<span>Alpha </span><span>beta alpha</span>'
+  pageTwo.append(fresh)
+  await sleep(140)
 })
-assert.equal(insertions.at(-1).text, 'PDF p.1: alpha beta')
+const rebuiltHighlight = highlightRegistry.get(SEARCH_HIGHLIGHT_NAME)
+assert.ok(rebuiltHighlight, 'a re-rendered text layer is re-highlighted')
+assert.equal(rebuiltHighlight.ranges.length, 3)
+assert.equal(
+  rangePage(highlightRegistry.get(SEARCH_ACTIVE_HIGHLIGHT_NAME).ranges[0]),
+  '2',
+  'the active occurrence follows the new text nodes',
+)
 
-// Clicking a result jumps to its physical page (p.2 in the list).
+// Next/previous buttons wrap at both ends and jump pages in order.
+const searchNext = () => panel().querySelector('[data-dsh-pdf-reader="search-next"]')
+const searchPrev = () => panel().querySelector('[data-dsh-pdf-reader="search-prev"]')
 await React.act(async () => {
-  panel.querySelectorAll('[data-dsh-pdf-reader="result"]')[1].click()
+  searchNext().click()
   await sleep(30)
 })
-assert.equal(pageInput.value, '2', 'result for physical page 3 shows printed page 2')
-assert.ok(scroll.top > 1000, 'result jumping writes the inner scrollport')
+assert.equal(countText(), '2 / 2')
+assert.equal(pageInput.value, '2', 'the second hit is on printed page 2')
+assert.ok(Math.abs(scroll.top - 1192) < 1, 'next jumps to physical page 3')
+assert.equal(rangePage(highlightRegistry.get(SEARCH_ACTIVE_HIGHLIGHT_NAME).ranges[0]), '3')
 
-// Close, then prove Ctrl/Cmd+F is not ours and Ctrl/Cmd+Shift+F is.
 await React.act(async () => {
-  panel.querySelector('[aria-label="Close search"]').click()
-  await sleep(10)
+  searchNext().click()
+  await sleep(30)
 })
-assert.equal(header.querySelector('[data-dsh-pdf-reader="panel"]'), null)
+assert.equal(countText(), '1 / 2', 'next wraps to the first hit')
+assert.ok(Math.abs(scroll.top - 592) < 1)
+
 await React.act(async () => {
-  document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
-    key: 'f',
-    metaKey: true,
+  searchPrev().click()
+  await sleep(30)
+})
+assert.equal(countText(), '2 / 2', 'previous wraps to the last hit')
+assert.ok(Math.abs(scroll.top - 1192) < 1)
+
+// Enter is next, Shift+Enter is previous, inside the find input.
+await React.act(async () => {
+  const event = new dom.window.KeyboardEvent('keydown', {
+    key: 'Enter',
     bubbles: true,
     cancelable: true,
-  }))
+  })
+  searchInput().dispatchEvent(event)
+  await sleep(30)
+  assert.equal(event.defaultPrevented, true)
 })
-assert.equal(header.querySelector('[data-dsh-pdf-reader="panel"]'), null, 'plain Cmd+F is never shadowed')
+assert.equal(countText(), '1 / 2', 'Enter wraps to the first hit')
+assert.ok(Math.abs(scroll.top - 592) < 1)
 await React.act(async () => {
-  document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
-    key: 'F',
-    metaKey: true,
+  const event = new dom.window.KeyboardEvent('keydown', {
+    key: 'Enter',
     shiftKey: true,
     bubbles: true,
     cancelable: true,
-  }))
+  })
+  searchInput().dispatchEvent(event)
+  await sleep(30)
+  assert.equal(event.defaultPrevented, true)
+})
+assert.equal(countText(), '2 / 2', 'Shift+Enter wraps to the previous hit')
+assert.ok(Math.abs(scroll.top - 1192) < 1)
+
+// Closing the panel clears both highlight layers.
+await React.act(async () => {
+  panel().querySelector('[data-dsh-pdf-reader="search-close"]').click()
   await sleep(10)
 })
-assert.ok(header.querySelector('[data-dsh-pdf-reader="panel"]'), 'Cmd+Shift+F opens search')
-await React.act(async () => {
-  document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
-    key: 'Escape',
+assert.equal(panel(), null)
+assert.equal(highlightRegistry.has(SEARCH_HIGHLIGHT_NAME), false, 'closing clears all matches')
+assert.equal(highlightRegistry.has(SEARCH_ACTIVE_HIGHLIGHT_NAME), false, 'closing clears the active match')
+
+const keydown = async (init, target = document) => {
+  const event = new dom.window.KeyboardEvent('keydown', {
     bubbles: true,
     cancelable: true,
-  }))
-})
+    ...init,
+  })
+  await React.act(async () => {
+    target.dispatchEvent(event)
+    await sleep(20)
+  })
+  return event
+}
+
+// Plain Ctrl+F is ours now: it opens the find bar and cancels the browser find.
+const ctrlF = await keydown({ key: 'f', ctrlKey: true })
+assert.equal(ctrlF.defaultPrevented, true, 'Ctrl+F is handled by the reader')
+assert.ok(panel(), 'Ctrl+F opens the find bar')
+assert.equal(
+  document.activeElement?.getAttribute('data-dsh-pdf-reader'),
+  'search-input',
+  'the input is focused for typing',
+)
+
+// Escape closes it again.
+await keydown({ key: 'Escape' }, searchInput())
+assert.equal(panel(), null, 'Escape closes the find bar')
+assert.equal(highlightRegistry.has(SEARCH_HIGHLIGHT_NAME), false)
+
+// Cmd+F (Meta) opens it too.
+const metaF = await keydown({ key: 'f', metaKey: true })
+assert.equal(metaF.defaultPrevented, true, 'Cmd+F is handled by the reader')
+assert.ok(panel(), 'Cmd+F opens the find bar')
+await keydown({ key: 'Escape' }, searchInput())
+assert.equal(panel(), null)
+
+// Cmd/Ctrl+Shift+F keeps working as before.
+const shiftF = await keydown({ key: 'F', metaKey: true, shiftKey: true })
+assert.equal(shiftF.defaultPrevented, true)
+assert.ok(panel(), 'Cmd+Shift+F still opens the find bar')
+await keydown({ key: 'Escape' }, searchInput())
+assert.equal(panel(), null)
+
+// Without the Custom Highlight API the span fallback marks the text layer.
+delete globalThis.Highlight
+assert.equal(highlightRegistry.size, 0)
+await keydown({ key: 'f', ctrlKey: true })
+await actWait(280)
+const hashPage2 = document.querySelector('[data-pdf-page="2"]')
+const hashPage3 = document.querySelector('[data-pdf-page="3"]')
+assert.ok(hashPage2.querySelector('.dsh-book-reader-search-hit'), 'the fallback marks page-2 matches')
+assert.ok(hashPage2.querySelector('.dsh-book-reader-search-active-hit'), 'the active fallback mark is stronger')
+assert.ok(hashPage3.querySelector('.dsh-book-reader-search-hit'), 'the fallback marks page-3 matches')
+await keydown({ key: 'Escape' }, searchInput())
+assert.equal(hashPage2.querySelector('.dsh-book-reader-search-hit'), null, 'closing clears fallback marks')
+assert.equal(hashPage2.querySelector('.dsh-book-reader-search-active-hit'), null)
+globalThis.Highlight = FakeHighlight
 
 // The first mount had no saved row, yet still fetches once and records a view.
 const firstViewGets = viewGets.filter(
@@ -699,13 +817,12 @@ if (firstPanel !== null) {
   await React.act(async () => { firstPanel.querySelector('[aria-label="Close search"]').click() })
 }
 
-// Claim the second preview by pointing at it, then press the chord.
+// Claim the second preview by pointing at it, then press Ctrl+F.
 await React.act(async () => {
   secondHeader.querySelector('[data-dsh-pdf-reader="controls"]').dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
   document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
     key: 'f',
     ctrlKey: true,
-    shiftKey: true,
     bubbles: true,
     cancelable: true,
   }))
@@ -714,27 +831,30 @@ await React.act(async () => {
 assert.ok(secondHeader.querySelector('[data-dsh-pdf-reader="panel"]'), 'the claimed preview opens')
 assert.equal(header.querySelector('[data-dsh-pdf-reader="panel"]'), null, 'the other preview stays closed')
 
-// Claim the first preview again; the chord now targets it.
+// Claim the first preview again; the shortcut now targets it.
 await React.act(async () => {
   header.querySelector('[data-dsh-pdf-reader="controls"]').dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }))
   document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
     key: 'f',
     ctrlKey: true,
-    shiftKey: true,
     bubbles: true,
     cancelable: true,
   }))
   await sleep(10)
 })
 assert.ok(header.querySelector('[data-dsh-pdf-reader="panel"]'), 'the newly claimed preview opens')
+await actWait(280)
+assert.ok(highlightRegistry.has(SEARCH_ACTIVE_HIGHLIGHT_NAME), 'the reopened find bar highlights its hit')
 
 // ---------------------------------------------------------------------------
-// Cleanup: unmount removes the controls, listeners, and panel.
+// Cleanup: unmount removes the controls, listeners, panel, and highlights.
 // ---------------------------------------------------------------------------
 await React.act(async () => { secondRoot.unmount() })
 await React.act(async () => { viewRoot.unmount() })
 assert.equal(header.querySelector('[data-dsh-pdf-reader="controls"]'), null)
 assert.equal(secondHeader.querySelector('[data-dsh-pdf-reader="controls"]'), null)
+assert.equal(highlightRegistry.has(SEARCH_HIGHLIGHT_NAME), false, 'unmount clears all highlights')
+assert.equal(highlightRegistry.has(SEARCH_ACTIVE_HIGHLIGHT_NAME), false, 'unmount clears the active highlight')
 await React.act(async () => {
   document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
     key: 'f',
@@ -1059,6 +1179,6 @@ await React.act(async () => { fitRoot.unmount() })
 scrollport.removeEventListener('wheel', countFitWheel)
 
 console.log('dsh-pdf-reader: client bundle OK — slot registration, numbering, '
-  + 'composer insertion, debounce/throttle, live scroll/jump/search/report/cleanup, '
-  + 'missing-route/non-PDF tolerance, abort-on-unmount, saved-page/zoom restore, '
-  + 'gated page/zoom persistence')
+  + 'in-page search highlights/sequential navigation, debounce/throttle, '
+  + 'live scroll/jump/search/report/cleanup, missing-route/non-PDF tolerance, '
+  + 'abort-on-unmount, saved-page/zoom restore, gated page/zoom persistence')
