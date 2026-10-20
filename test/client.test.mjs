@@ -30,12 +30,14 @@ const dom = new JSDOM(`<!doctype html><html><body>
   <div id="preview">
     <div id="header"></div>
     <div data-textpreview-body id="body">
-      <div data-document-zoom-scrollport id="scrollport">
-        <section data-pdf-preview id="pages">
-          <div data-pdf-page="1"><div class="placeholder"></div></div>
-          <div data-pdf-page="2"><div class="placeholder"></div></div>
-          <div data-pdf-page="3"><div class="placeholder"></div></div>
-        </section>
+      <div data-document-zoom-frame id="frame" data-document-zoom-mode="fit-width" style="--document-zoom: 1">
+        <div data-document-zoom-scrollport id="scrollport">
+          <section data-pdf-preview id="pages">
+            <div data-pdf-page="1"><div class="placeholder"></div></div>
+            <div data-pdf-page="2"><div class="placeholder"></div></div>
+            <div data-pdf-page="3"><div class="placeholder"></div></div>
+          </section>
+        </div>
       </div>
     </div>
   </div>
@@ -60,6 +62,7 @@ const { createRoot } = requireSibling('react-dom/client')
 const { document } = dom.window
 const header = document.getElementById('header')
 const body = document.getElementById('body')
+const zoomFrame = document.getElementById('frame')
 const scrollport = document.getElementById('scrollport')
 
 const scroll = { top: 0 }
@@ -150,6 +153,7 @@ contribution = { options: calls[2][1], component: calls[2][2] }
 
 const {
   buildSearchReference,
+  clampZoomScale,
   createDebouncer,
   createRafThrottle,
   describeSearchFailure,
@@ -157,12 +161,15 @@ const {
   insertComposerText,
   isPdfPath,
   normalizeSnippet,
+  normalizeView,
   pageElements,
   parsePageInput,
   pickPage,
   printedPageOf,
+  readFrameZoom,
   resolvePane,
   resolveScrollport,
+  resolveZoomFrame,
   scrollPageIntoView,
   searchResultLabel,
 } = bundle.__test
@@ -324,6 +331,35 @@ assert.equal(pickPage([{ number: 1, top: 200 }], { top: 0, height: 800 }), 1, 'a
 }
 
 // ---------------------------------------------------------------------------
+// Saved-view payloads and frame zoom readout.
+// ---------------------------------------------------------------------------
+assert.equal(clampZoomScale(0.1), 0.25, 'below the fixed range is clamped')
+assert.equal(clampZoomScale(9), 4, 'above the fixed range is clamped')
+assert.equal(clampZoomScale('1.23456'), 1.235, 'stored scales keep 3 decimals')
+assert.equal(clampZoomScale('fit'), undefined)
+assert.equal(clampZoomScale(undefined), undefined)
+assert.equal(normalizeView({ ok: true, view: null }), undefined)
+assert.deepEqual(
+  normalizeView({ ok: true, view: { pdfPage: 3, zoomMode: 'fixed', zoomScale: 1.5 } }),
+  { pdfPage: 3, zoomMode: 'fixed', zoomScale: 1.5 },
+)
+assert.deepEqual(
+  normalizeView({ ok: true, view: { pdfPage: '3', zoomMode: 'fixed', zoomScale: 1.5 } }),
+  undefined,
+  'a malformed page is ignored',
+)
+assert.deepEqual(
+  normalizeView({ ok: false, view: { pdfPage: 3 } }),
+  undefined,
+  'a failed GET is not a view',
+)
+assert.deepEqual(
+  normalizeView({ ok: true, view: { pdfPage: 2, zoomMode: 'bogus', zoomScale: 9 } }),
+  { pdfPage: 2, zoomMode: 'fit-width', zoomScale: 4 },
+  'unknown modes fall back to fit-width and scales are clamped',
+)
+
+// ---------------------------------------------------------------------------
 // DOM markers and the inner scrollport (the mechanism dsh-pdf-search proved).
 // ---------------------------------------------------------------------------
 const probe = document.createElement('span')
@@ -331,6 +367,8 @@ header.append(probe)
 const pane = resolvePane(probe)
 assert.equal(pane, body, 'header contribution resolves its sibling preview body')
 assert.equal(resolveScrollport(body), scrollport)
+assert.equal(resolveZoomFrame(body, scrollport), zoomFrame, 'the zoom frame is found around the scrollport')
+assert.deepEqual(readFrameZoom(zoomFrame), { zoomMode: 'fit-width', zoomScale: 1 })
 assert.deepEqual(pageElements(body).map((entry) => entry.number), [1, 2, 3])
 probe.remove()
 
@@ -346,6 +384,8 @@ scroll.top = 0
 const path = `/tmp/dsh-pdf-reader-test-${Date.now()}.pdf`
 const requests = []
 const posts = []
+const viewGets = []
+const viewPosts = []
 const info = { ok: true, path, pageCount: 3, printedOffset: 1, outline: [] }
 const searchHits = [
   { pdf: 2, printed: 1, snippet: '  alpha   beta ' },
@@ -359,6 +399,14 @@ globalThis.fetch = async (url, options = {}) => {
   }
   if (target.startsWith('/dsh-pdf-reader/search')) {
     return { ok: true, status: 200, json: async () => ({ ok: true, hits: searchHits }) }
+  }
+  if (target.startsWith('/dsh-pdf-reader/view')) {
+    if (String(options.method ?? 'GET').toUpperCase() === 'POST') {
+      viewPosts.push(JSON.parse(String(options.body)))
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+    viewGets.push(target)
+    return { ok: true, status: 200, json: async () => ({ ok: true, view: null }) }
   }
   if (target === '/dsh-pdf-reader/current') {
     posts.push(JSON.parse(String(options.body)))
@@ -607,6 +655,17 @@ await React.act(async () => {
   }))
 })
 
+// The first mount had no saved row, yet still fetches once and records a view.
+const firstViewGets = viewGets.filter(
+  (url) => url.startsWith(`/dsh-pdf-reader/view?path=${encodeURIComponent(path)}`),
+)
+assert.equal(firstViewGets.length, 1, 'one saved-view GET per PDF mount')
+assert.ok(viewPosts.length >= 1, 'the view is saved even when the Host has no row yet')
+assert.ok(viewPosts.every((entry) => entry.path === path))
+assert.ok(viewPosts.every((entry) => Number.isInteger(entry.pdfPage) && entry.pdfPage >= 1 && entry.pdfPage <= 3))
+assert.ok(viewPosts.every((entry) => entry.zoomMode === 'fit-width' || entry.zoomMode === 'fixed'))
+assert.ok(viewPosts.every((entry) => entry.zoomScale >= 0.25 && entry.zoomScale <= 4))
+
 // ---------------------------------------------------------------------------
 // Two previews: the shortcut belongs to the preview the pointer last claimed.
 // ---------------------------------------------------------------------------
@@ -752,7 +811,7 @@ await React.act(async () => {
   await sleep(30)
 })
 assert.equal(header.querySelector('[data-dsh-pdf-reader="controls"]'), null)
-assert.equal(nonPdfFetches, 0, 'non-PDF files issue no host requests')
+assert.equal(nonPdfFetches, 0, 'non-PDF files issue no host requests, including GET /view')
 await React.act(async () => {
   document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
     key: 'f',
@@ -796,6 +855,210 @@ assert.ok(pendingSignals.length >= 2, 'info and search requests were issued')
 await React.act(async () => { abortRoot.unmount() })
 assert.ok(pendingSignals.every((entry) => entry.signal?.aborted === true), 'unmount aborts every in-flight fetch')
 
+// ---------------------------------------------------------------------------
+// Per-book view memory: restore page 3 at a fixed 1.5x from the Host, hold the
+// save gate until the restore lands, then persist page/zoom changes.
+// ---------------------------------------------------------------------------
+const restorePath = `/tmp/dsh-pdf-reader-restore-${Date.now()}.pdf`
+const restoreGets = []
+const restorePosts = []
+const restoreCurrent = []
+const restoreWheels = []
+let releaseView
+const heldView = new Promise((resolve) => { releaseView = resolve })
+const savedView = {
+  path: restorePath,
+  pdfPage: 3,
+  zoomMode: 'fixed',
+  zoomScale: 1.5,
+  updatedAt: '2026-10-20T00:00:00.000Z',
+}
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url)
+  if (target.startsWith('/dsh-pdf-reader/view')) {
+    if (String(options.method ?? 'GET').toUpperCase() === 'POST') {
+      restorePosts.push(JSON.parse(String(options.body)))
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+    restoreGets.push(target)
+    const body = await heldView
+    return { ok: true, status: 200, json: async () => body }
+  }
+  if (target.startsWith('/dsh-pdf-reader/info')) {
+    return { ok: true, status: 200, json: async () => ({ ok: true, pageCount: 3, outline: [] }) }
+  }
+  if (target === '/dsh-pdf-reader/current') {
+    restoreCurrent.push(JSON.parse(String(options.body)))
+    return { ok: true, status: 200, json: async () => ({ ok: true }) }
+  }
+  return { ok: false, status: 404, json: async () => ({ ok: false }) }
+}
+
+/**
+ * The real preview applies a Ctrl+wheel gesture to the frame. Mirroring that
+ * here makes the restore loop converge exactly like it does in the browser.
+ */
+const applyZoomWheel = (event) => {
+  restoreWheels.push({
+    ctrlKey: event.ctrlKey,
+    deltaY: event.deltaY,
+    deltaMode: event.deltaMode,
+  })
+  const current = Number.parseFloat(zoomFrame.style.getPropertyValue('--document-zoom')) || 1
+  const next = Math.min(4, Math.max(0.25, current * Math.exp(-event.deltaY * 0.01)))
+  zoomFrame.style.setProperty('--document-zoom', String(next))
+  zoomFrame.setAttribute('data-document-zoom-mode', 'fixed')
+}
+scrollport.addEventListener('wheel', applyZoomWheel)
+
+zoomFrame.setAttribute('data-document-zoom-mode', 'fit-width')
+zoomFrame.style.setProperty('--document-zoom', '1')
+scroll.top = 0
+const restoreRoot = createRoot(header)
+await React.act(async () => {
+  restoreRoot.render(React.createElement(contribution.component, {
+    absolutePath: restorePath,
+    sessionId: 'session-test',
+    inputActions,
+  }))
+  await sleep(30)
+})
+assert.equal(restoreGets.length, 1, 'one saved-view GET per PDF mount')
+assert.equal(
+  restoreGets[0],
+  `/dsh-pdf-reader/view?path=${encodeURIComponent(restorePath)}`,
+  'the GET carries the encoded absolute path',
+)
+assert.equal(header.querySelector('[data-dsh-pdf-reader="page"]').value, '1')
+
+// While the GET is held, page sampling/reporting runs, but nothing may be saved.
+await actWait(700)
+assert.ok(restoreCurrent.length >= 1, 'the page report path ran while the view GET was pending')
+assert.equal(restorePosts.length, 0, 'no /view POST before the saved view resolves')
+assert.equal(scroll.top, 0, 'the saved page is not restored before the view resolves')
+
+await React.act(async () => {
+  releaseView({ ok: true, view: savedView })
+  await sleep(30)
+})
+assert.ok(restoreWheels.length >= 1, 'the plugin dispatched a synthetic zoom gesture')
+assert.equal(restoreWheels[0].ctrlKey, true, 'the wheel gesture looks like a Ctrl+wheel pinch')
+assert.ok(Number.isFinite(restoreWheels[0].deltaY))
+assert.ok(restoreWheels[0].deltaY < 0, 'the saved 1.5x needs zooming in')
+assert.equal(restoreWheels[0].deltaMode, 0)
+assert.equal(restorePosts.length, 0, 'no save while the restore is still placing the page')
+
+await actWait(1000)
+const restoredScaled = Math.round(
+  Number.parseFloat(zoomFrame.style.getPropertyValue('--document-zoom')) * 1000,
+) / 1000
+assert.ok(Math.abs(scroll.top - 1192) < 1, 'the scrollport ends on saved page 3')
+assert.equal(header.querySelector('[data-dsh-pdf-reader="page"]').value, '3', 'the readout follows the restore')
+assert.ok(restorePosts.length >= 1, 'the restored view is saved after the gate opens')
+const restoredPost = restorePosts.at(-1)
+assert.deepEqual(
+  Object.keys(restoredPost).sort(),
+  ['path', 'pdfPage', 'zoomMode', 'zoomScale'],
+  'only the four client fields are sent',
+)
+assert.equal(restoredPost.path, restorePath)
+assert.equal(restoredPost.pdfPage, 3)
+assert.equal(restoredPost.zoomMode, 'fixed')
+assert.equal(restoredPost.zoomScale, restoredScaled, 'zoomScale is read from the frame')
+assert.ok(Math.abs(restoredPost.zoomScale - 1.5) <= 1.5 * 0.02, 'the restored scale is within 2%')
+assert.ok(restorePosts.every((entry) => entry.pdfPage === 3), 'no restore-time page 1 overwrote the saved page')
+
+// A frame attribute change (zoom commit) schedules another debounced save.
+const postsBeforeZoom = restorePosts.length
+await React.act(async () => {
+  zoomFrame.setAttribute('data-document-zoom-mode', 'fixed')
+  zoomFrame.style.setProperty('--document-zoom', '1.75')
+  await sleep(30)
+})
+await actWait(700)
+assert.ok(restorePosts.length > postsBeforeZoom, 'a frame zoom change triggers a later /view POST')
+assert.equal(restorePosts.at(-1).pdfPage, 3)
+assert.equal(restorePosts.at(-1).zoomMode, 'fixed')
+assert.ok(Math.abs(restorePosts.at(-1).zoomScale - 1.75) < 0.002)
+
+// The sampled page piggybacks on the same debounced save.
+await React.act(async () => {
+  scroll.top = 700
+  scrollport.dispatchEvent(new dom.window.Event('scroll'))
+  await sleep(40)
+})
+await actWait(700)
+assert.equal(restorePosts.at(-1).pdfPage, 2, 'a page change is saved after the same debounce')
+assert.equal(restorePosts.at(-1).zoomMode, 'fixed')
+assert.equal(restorePosts.at(-1).zoomScale, 1.75)
+
+await React.act(async () => { restoreRoot.unmount() })
+assert.equal(header.querySelector('[data-dsh-pdf-reader="controls"]'), null)
+scrollport.removeEventListener('wheel', applyZoomWheel)
+
+// ---------------------------------------------------------------------------
+// A saved fit-width view restores only the page: the default mode is left alone.
+// ---------------------------------------------------------------------------
+const fitPath = `/tmp/dsh-pdf-reader-fit-${Date.now()}.pdf`
+const fitPosts = []
+const fitCurrent = []
+let fitWheels = 0
+const countFitWheel = () => { fitWheels += 1 }
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url)
+  if (target.startsWith('/dsh-pdf-reader/view')) {
+    if (String(options.method ?? 'GET').toUpperCase() === 'POST') {
+      fitPosts.push(JSON.parse(String(options.body)))
+      return { ok: true, status: 200, json: async () => ({ ok: true }) }
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        view: { path: fitPath, pdfPage: 2, zoomMode: 'fit-width', zoomScale: 1.5 },
+      }),
+    }
+  }
+  if (target.startsWith('/dsh-pdf-reader/info')) {
+    return { ok: true, status: 200, json: async () => ({ ok: true, pageCount: 3, outline: [] }) }
+  }
+  if (target === '/dsh-pdf-reader/current') {
+    fitCurrent.push(JSON.parse(String(options.body)))
+    return { ok: true, status: 200, json: async () => ({ ok: true }) }
+  }
+  return { ok: false, status: 404, json: async () => ({ ok: false }) }
+}
+scrollport.addEventListener('wheel', countFitWheel)
+zoomFrame.setAttribute('data-document-zoom-mode', 'fit-width')
+zoomFrame.style.setProperty('--document-zoom', '1.13')
+scroll.top = 0
+const fitRoot = createRoot(header)
+await React.act(async () => {
+  fitRoot.render(React.createElement(contribution.component, {
+    absolutePath: fitPath,
+    sessionId: 'session-test',
+    inputActions,
+  }))
+  await sleep(30)
+})
+await actWait(900)
+assert.equal(fitWheels, 0, 'a fit-width view never forces a fixed scale')
+assert.ok(Math.abs(scroll.top - 592) < 1, 'the saved page is restored in fit-width mode')
+assert.equal(header.querySelector('[data-dsh-pdf-reader="page"]').value, '2')
+assert.equal(zoomFrame.getAttribute('data-document-zoom-mode'), 'fit-width')
+assert.ok(fitPosts.length >= 1)
+assert.equal(fitPosts.at(-1).pdfPage, 2)
+assert.equal(fitPosts.at(-1).zoomMode, 'fit-width')
+assert.ok(
+  Math.abs(fitPosts.at(-1).zoomScale - 1.13) < 0.002,
+  'the resolved fit-width scale is stored informationally',
+)
+assert.ok(fitPosts.every((entry) => entry.pdfPage === 2), 'the restore-time page 1 was never saved')
+await React.act(async () => { fitRoot.unmount() })
+scrollport.removeEventListener('wheel', countFitWheel)
+
 console.log('dsh-pdf-reader: client bundle OK — slot registration, numbering, '
   + 'composer insertion, debounce/throttle, live scroll/jump/search/report/cleanup, '
-  + 'missing-route/non-PDF tolerance, abort-on-unmount')
+  + 'missing-route/non-PDF tolerance, abort-on-unmount, saved-page/zoom restore, '
+  + 'gated page/zoom persistence')

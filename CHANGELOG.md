@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-10-20
+
+### Added
+
+- View-state memory: the toolbar remembers the last page and zoom ratio per PDF
+  and restores them when the same book is reopened. The state is stored by the
+  Host in the `book_reader_views` storage domain through `ctx.storageDomain`
+  (schema-validated JSON under the DSH data directory), survives DSH restarts,
+  and degrades silently when that service is unavailable.
+- New config key `rememberView` (default `true`).
+- Host routes `GET /dsh-pdf-reader/view?path=…` and
+  `POST /dsh-pdf-reader/view` for the browser half.
+
 ## [0.1.1] — 2026-10-18
 
 ### Changed
@@ -56,5 +69,6 @@ First public release.
 - `pdfjs-dist` is pinned to `6.3.289` to match the host process.
 - MIT licensed.
 
+[0.2.0]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.2.0
 [0.1.1]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.1.0

@@ -88,6 +88,33 @@ the header flashes `(copied)` / `Composer busy`.
 Search-result payloads use the printed page when the Host supplies one:
 `PDF p.132: singular value decomposition`.
 
+## Remembered page and zoom
+
+The official preview keeps neither the scroll position nor the zoom across tabs
+or restarts: its zoom preference lives in a per-tab in-memory store, and
+byte-view scroll is explicitly not restored. The plugin owns this state:
+
+- On mount the contribution `GET`s `/dsh-pdf-reader/view?path=…` in parallel
+  with rendering, waits (up to about 8 s) for the preview pane and the saved
+  page element, scrolls that page into view with `scrollPageIntoView`, and
+  re-applies the scroll once after 300 ms so lazily rendered pages cannot leave
+  the view offset.
+- Fixed zoom is restored through the preview's own gesture path: its native
+  `wheel` listener on `[data-document-zoom-scrollport]` reacts to `ctrlKey` with
+  `scale * exp(-deltaY * 0.01)` (deltaY clamped to ±40) and commits a fixed
+  preference 120 ms after the last event. The plugin dispatches synthetic
+  `WheelEvent`s with `deltaY = -100·ln(target/current)` until the frame's inline
+  `--document-zoom` is within 2%, then waits for that settle commit. `fit-width`
+  is the preview's default mode and needs no restoration.
+- Saving is gated until the restore finishes (success or failure), so opening a
+  book cannot overwrite its saved page with page 1. Page samples and frame
+  attribute changes (`style`, `data-document-zoom-mode`) feed one 500 ms
+  debounce that `POST`s `{ path, pdfPage, zoomMode, zoomScale }`; the Host stamps
+  `updatedAt`.
+- Everything degrades silently when a marker, the route, or the storage service
+  is missing. The last ~500 ms before unmount can be lost because the effect
+  deliberately has no flush-on-unmount.
+
 ## Auto-follow / AI context
 
 After the readout first resolves, every page change is reported once, trailing
@@ -193,21 +220,19 @@ the slot registration, page numbering/parsing, composer payload and
 `captureInsertion`/`insertText` use, debounce/throttle timing, DOM marker
 resolution, inner-scrollport jumping, a live jsdom mount (info → readout →
 report → toggle → jump → search → `→ AI` → shortcut → two-preview
-election → cleanup), and quiet behavior for missing Host routes and non-PDF
-paths.
+election → cleanup), saved-page/zoom restore (held GET, wheel dispatch, gated
+persistence), and quiet behavior for missing Host routes and non-PDF paths.
 
-## Verification status (this checkout)
+## Verification status
 
-- `node dsh-book-reader/test/client.test.mjs` passes.
-- The live app accepted the client's exact `POST /dsh-pdf-reader/current` body
-  (`{"path":…,"pdfPage":152,"printedPage":132,"sessionId":…}`) with
-  `{"ok":true}`, and `GET /current` echoed `pdfPage:152, printedPage:132`.
-- `GET /info` and `GET /search` currently fail in this checkout with a
-  **Host-side** `pdfjs-dist` version mismatch
-  (`API version "6.4.299" does not match the Worker version "6.3.289"`), so the
-  printed-numbering readout and search could only be exercised against fixtures,
-  not end-to-end. The client's missing-route/failure path is tested and degrades
-  quietly.
-- Mounting the slot contribution in the real GUI (header layout at the actual
-  sidebar width, standard props, composer insertion, real lazy PDF rendering)
-  was not verified here; profile install is the Lead's step.
+- `node test/client.test.mjs` passes, including the saved-page/zoom restore,
+  gating and persistence tests.
+- The restore path uses private renderer markers and behaviour observed in DSH
+  0.2.1-rc.2 (`[data-document-zoom-frame]`, the inline `--document-zoom`, the
+  `ctrl+wheel` listener). Headless jsdom tests simulate that renderer; a real
+  GUI check of the restored scroll position and zoom after reopening a book is
+  still required.
+- The live app accepted the client's `POST /current` and `POST /view` bodies in
+  manual runs. Mounting the contribution in the real GUI (header layout at the
+  actual sidebar width, standard props, composer insertion, real lazy PDF
+  rendering) remains a manual smoke test.

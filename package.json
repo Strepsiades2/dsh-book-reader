@@ -1,7 +1,7 @@
 {
   "name": "dsh-book-reader",
-  "version": "0.1.1",
-  "description": "Read books and papers in DSH: a reading toolbar on the official PDF preview, plus PDF tools for the model (page map, full-text search, page text and images).",
+  "version": "0.2.0",
+  "description": "Read books and papers in DSH: a reading toolbar on the official PDF preview that remembers your page and zoom, plus PDF tools for the model (page map, full-text search, page text and images).",
   "keywords": [
     "dsh",
     "dsh-plugin",
@@ -32,17 +32,25 @@
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-llm": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-storage-domain": "^0.2.0-rc.2",
     "@deepseek-ai/dsh-tools": "^0.2.0-rc.2",
-    "@deepseek-ai/schemastery": "^3.18.4"
+    "@deepseek-ai/schemastery": "^3.18.4",
+    "zod": "^4.4.3"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-llm": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-storage-domain": {
       "optional": true
     },
     "@deepseek-ai/dsh-tools": {
       "optional": true
     },
     "@deepseek-ai/schemastery": {
+      "optional": true
+    },
+    "zod": {
       "optional": true
     }
   },

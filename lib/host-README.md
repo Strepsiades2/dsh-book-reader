@@ -156,8 +156,9 @@ Failure bodies are `{ "ok": false, "error": "<token>" }` with status 400/403/404
 `missing`, `not-a-file`, `file-too-large`, `forbidden-host`,
 `method-not-allowed`, `missing-query`, `query-too-long`, `invalid-limit`,
 `unsupported-media-type`, `body-too-large`, `invalid-json`, `invalid-page`,
-`invalid-session-id`, `invalid-printed-page`, `info-failed`, `search-failed`,
-`route-failed`, `not-found`.
+`invalid-zoom-mode`, `invalid-zoom-scale`, `invalid-session-id`,
+`invalid-printed-page`, `info-failed`, `search-failed`, `route-failed`,
+`storage-unavailable`, `not-found`.
 
 Tool failures preserve the core's coded error names where the core raises
 them: `PDF_NOT_FOUND`, `PDF_ENCRYPTED`, `PDF_CORRUPT`, `PDF_NOT_READABLE`,
@@ -240,6 +241,56 @@ may be `null` if the PDF has no printed-page information and the browser did not
 supply a label, and may be a roman-numeral string in front matter. Section fields
 are omitted when the outline cannot be loaded.
 
+### `GET /dsh-pdf-reader/view?path=<absolute .pdf>`
+
+Reads the remembered page/zoom for one book:
+
+```jsonc
+{
+  "ok": true,
+  "view": {
+    "path": "/abs/book.pdf",
+    "pdfPage": 152,
+    "zoomMode": "fixed",       // or "fit-width"
+    "zoomScale": 1.5,          // resolved scale, 0.25..4
+    "updatedAt": 1760000000000
+  }
+}
+```
+
+`view` is `null` when nothing is remembered, when `rememberView` is `false`,
+when the storage service is unavailable, or when the stored record is malformed.
+The route deliberately does **not** stat the PDF: the browser may ask while the
+preview is still opening, and a missing book's stale record is harmless.
+
+### `POST /dsh-pdf-reader/view`
+
+Request body (`Content-Type: application/json` required; default cap 64 KiB):
+
+```jsonc
+{ "path": "/abs/book.pdf", "pdfPage": 152, "zoomMode": "fixed", "zoomScale": 1.5 }
+```
+
+Response `{ "ok": true }`; the Host stamps `updatedAt` itself and never trusts a
+client timestamp. Validation errors: `400 invalid-path` (relative, non-`.pdf`,
+empty, or longer than 4096 characters), `invalid-page` (integer 1–100000),
+`invalid-zoom-mode` (`fit-width` or `fixed`), `invalid-zoom-scale` (finite
+0.25–4). `rememberView: false` keeps validation but makes the write a no-op;
+`503 storage-unavailable` means the write could not be made durable, so the
+browser retries on its next trigger.
+
+### Where the view state lives
+
+`apply()` opens the `book_reader_views` storage domain (version 1, layout
+`single`, table `views`) through `ctx.storageDomain` when `rememberView` is on.
+The JSON backend persists it under the DSH data directory, so it survives
+restarts. Each record is keyed by `sha256(absolute path)`; reads verify the
+record's `path` before returning it, and the table keeps at most 500 books
+(oldest `updatedAt` pruned after a write). The storage-domain and zod modules
+are imported dynamically: when the service or packages are unavailable the
+feature disables itself, warns once, and the plugin, tools, and routes keep
+working (`GET` answers `view: null`, `POST` answers `503`).
+
 ---
 
 ## Auto-share: how a reading position reaches the conversation
@@ -301,6 +352,7 @@ All keys are optional. The same defaults are applied by the loader schema and by
 | Key | Default | Range | Meaning |
 |---|---|---|---|
 | `enabled` | `true` | boolean | Master switch for tools, routes, and listener. |
+| `rememberView` | `true` | boolean | Remember the last page/zoom per book in the `book_reader_views` domain. |
 | `autoShare` | `true` | boolean | Inject the current reading page, once per turn. |
 | `autoShareSection` | `true` | boolean | Resolve the outline section for the injected message. |
 | `autoShareMinIntervalMs` | `0` | 0–86400000 | Optional minimum ms between hints; `0` = no time throttle. |
@@ -355,28 +407,44 @@ YAML example:
 - **The image path needs an image-capable route and an attachment store.** The
   tool is not registered without `ctx.attachments`, and each call refuses before
   rendering when the routed model does not declare image input.
+- **Remembered view state needs the storage domain.** Without `ctx.storageDomain`
+  (or when its backend rejects the open), the browser half's GETs answer
+  `view: null` and its POSTs answer `503`; page/zoom memory is simply off. The
+  plugin warns once and everything else keeps working.
+- **Remembered view state is best effort.** Restoring is the browser half's job
+  and depends on the official preview's private zoom frame/gesture; a renderer
+  change can reduce it to page-only restore. Writes are debounced, so the last
+  ~500 ms of reading before the preview closes can be lost.
+- **One record per book path.** The key is the absolute path, so moving a file
+  (or replacing it in place) keeps the old record. Two open tabs of one book
+  share it and the last write wins.
 
 ---
 
 ## Wiring and verification
 
 `apply(ctx)` requires the `tools`, `webServer`, and `agents` services. The image
-tool is registered inside `ctx.inject(['attachments'], …)`. The core is loaded
-lazily from `./core/pdf.js` and `./core/render.js`; a missing core produces a
-clear `PDF core is unavailable` / `PDF renderer is unavailable` tool error and a
-500 on the routes instead of a silent fallback.
+tool is registered inside `ctx.inject(['attachments'], …)`. Remembered page/zoom
+opens the `book_reader_views` domain inside `ctx.inject(['storageDomain'], …)`
+when `rememberView` is on; both injections are optional and their absence only
+disables the corresponding feature. The core is loaded lazily from
+`./core/pdf.js` and `./core/render.js`; a missing core produces a clear
+`PDF core is unavailable` / `PDF renderer is unavailable` tool error and a 500
+on the routes instead of a silent fallback.
 
 Plain-`node` tests (no harness, no core required):
 
 ```sh
-node dsh-book-reader/test/host.test.mjs
-# all 39 host tests passed
+node test/host.test.mjs
+# all 49 host tests passed
 ```
 
-The tests import the real `lib/index.js`, stubbing only the three host-provided
-bare specifiers, and cover page-range parsing, printed/PDF resolution, section
-trails, auto-share text and throttle decisions, config validation, route
-hardening, route responses, tool registration, and the image-bearing read tool.
+The tests import the real `lib/index.js`, stubbing the host-provided bare
+specifiers (schemastery, tools, llm, storage-domain, zod), and cover page-range
+parsing, printed/PDF resolution, section trails, auto-share text and throttle
+decisions, config validation, route hardening, route responses (including the
+`/view` round trip and validation), tool registration, tool registration counts
+and the image-bearing read tool.
 
 A separate real-core integration run against
 `Linear Algebra Done Right-Springer (2024).pdf` verified `getInfo` (410 pages,

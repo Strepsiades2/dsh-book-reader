@@ -1,15 +1,17 @@
 /**
  * Host-half tests for dsh-pdf-reader.
  *
- * Plain `node`, no framework, no running harness. The three host-provided
- * bare specifiers are replaced with data-URL stubs through Node's synchronous
- * module hooks, so the real `lib/index.js` is imported and exercised:
+ * Plain `node`, no framework, no running harness. The host-provided bare
+ * specifiers (including the dynamically imported storage-domain/zod pair)
+ * are replaced with data-URL stubs through Node's synchronous module hooks,
+ * so the real `lib/index.js` is imported and exercised:
  * page-selection parsing, printed/PDF mode resolution, section trails, the
  * auto-share message and throttle decision, route hardening, the route
  * handler, tool registration, and the image-bearing read-pages tool.
  */
 
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { registerHooks } from 'node:module'
 
 const STUBS = {
@@ -35,6 +37,34 @@ const STUBS = {
     export function createUserMessage(input) {
       return { ...input, role: 'user', id: 'test-message' }
     }
+  `,
+  '@deepseek-ai/dsh-storage-domain': `
+    export function defineDomain(spec) { return spec }
+    export function domainTable(schema) { return { schema } }
+  `,
+  // Declarative-only zod surface: lib/index.js builds the domain schema but
+  // validates HTTP input itself, so the builders never need to parse.
+  zod: `
+    function chainable() {
+      const schema = {
+        optional: () => schema,
+        min: () => schema,
+        max: () => schema,
+        int: () => schema,
+        nonnegative: () => schema,
+      }
+      return schema
+    }
+    const z = {
+      object: (shape) => ({ shape }),
+      string: chainable,
+      number: chainable,
+      boolean: chainable,
+      enum: (values) => ({ values }),
+      literal: (value) => ({ value }),
+    }
+    export { z }
+    export default z
   `,
 }
 
@@ -164,6 +194,7 @@ async function makeRouteFixture(overrides = {}) {
       limit: config.infoCacheSize,
     })
   const positions = overrides.positions ?? host.createPositionStore()
+  const views = overrides.views ?? host.createViewStateAdapter()
   const calls = []
   const pdfCore = {
     async searchPdf(path, query, options) {
@@ -185,14 +216,127 @@ async function makeRouteFixture(overrides = {}) {
     infoCache,
     positions,
     statFile,
+    views,
   })
-  return { handler, config, positions, infoCache, calls, files }
+  return { handler, config, positions, infoCache, calls, files, views }
 }
 
 function query(path, params = {}) {
   const url = new URL(`http://127.0.0.1${path}`)
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
   return `${url.pathname}${url.search}`
+}
+
+/** In-memory stand-in for one opened domain table. */
+function makeFakeViewTable(initial = []) {
+  const records = new Map(initial)
+  const deleted = []
+  return {
+    records,
+    deleted,
+    get size() {
+      return records.size
+    },
+    get(key) {
+      return records.get(key)
+    },
+    entries() {
+      return records.entries()
+    },
+    async put(key, value) {
+      records.set(key, value)
+    },
+    async delete(key) {
+      deleted.push(key)
+      return records.delete(key)
+    },
+  }
+}
+
+/** In-memory route-facing view adapter (same shape as createViewStateAdapter). */
+function makeFakeViews() {
+  const records = new Map()
+  const calls = { reads: [], writes: [] }
+  let available = true
+  return {
+    records,
+    calls,
+    get available() {
+      return available
+    },
+    setAvailable(value) {
+      available = value
+    },
+    async read(path) {
+      calls.reads.push(path)
+      if (!available) return null
+      return records.get(path) ?? null
+    },
+    async write(record) {
+      calls.writes.push(record)
+      if (!available) return false
+      records.set(record.path, record)
+      return true
+    },
+    attach() {},
+    detach() {},
+    warnOnce() {},
+  }
+}
+
+/** Fake storageDomain facility; `failOpen` exercises the degradation path. */
+function makeFakeStorageDomain({ failOpen = false } = {}) {
+  return {
+    async open() {
+      if (failOpen) throw new Error('storage backend unavailable')
+      return {
+        table() {
+          return makeFakeViewTable()
+        },
+        async close() {},
+      }
+    },
+  }
+}
+
+/** Build a Cordis-like host context for `apply()` tests. */
+function makeApplyContext({ storageDomain = makeFakeStorageDomain() } = {}) {
+  const tools = []
+  const routes = []
+  const listeners = []
+  let injections = 0
+  const ctx = {
+    tools: { register: (definition) => tools.push(definition) },
+    webServer: {
+      register: (route) => {
+        routes.push(route)
+        return () => {}
+      },
+    },
+    effect: (factory) => {
+      factory()
+      return () => {}
+    },
+    on: (event, listener, options) => {
+      listeners.push({ event, listener, options })
+      return () => {}
+    },
+    inject: (deps, callback) => {
+      injections += 1
+      callback({ tools: ctx.tools, get: ctx.get, storageDomain })
+      return () => {}
+    },
+    get: () => undefined,
+  }
+  return {
+    ctx,
+    tools,
+    routes,
+    listeners,
+    get injections() {
+      return injections
+    },
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -673,7 +817,9 @@ await test('createAutoShareListener never injects for a position from another se
 await test('normalizeConfig applies defaults and rejects out-of-range values', () => {
   assert.deepEqual(host.normalizeConfig(), host.DEFAULT_CONFIG)
   assert.equal(host.normalizeConfig({ autoShare: false }).autoShare, false)
+  assert.equal(host.normalizeConfig({ rememberView: false }).rememberView, false)
   assert.equal(host.normalizeConfig({ maxPagesPerCall: 8 }).maxPagesPerCall, 8)
+  assert.throws(() => host.normalizeConfig({ rememberView: 'yes' }), /must be a boolean/u)
   assert.throws(() => host.normalizeConfig({ maxPagesPerCall: 9 }), /between 1 and 8/u)
   assert.throws(() => host.normalizeConfig({ maxPagesPerCall: 0 }), /between 1 and 8/u)
   assert.throws(() => host.normalizeConfig({ autoShareMinIntervalMs: -1 }), /between 0 and 86400000/u)
@@ -867,6 +1013,430 @@ await test('GET /info surfaces missing and invalid paths', async () => {
 })
 
 // ---------------------------------------------------------------------------
+// Remembered page/zoom (`/view`)
+// ---------------------------------------------------------------------------
+
+function postView(handler, body, options = {}) {
+  return callRoute(handler, {
+    method: 'POST',
+    url: '/dsh-pdf-reader/view',
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+    ...options,
+  })
+}
+
+await test('GET /view returns null for a path with no remembered view', async () => {
+  const fixture = await makeRouteFixture({ views: makeFakeViews() })
+  const response = await callRoute(fixture.handler, {
+    url: query('/dsh-pdf-reader/view', { path: '/books/Unknown.pdf' }),
+  })
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.json(), { ok: true, view: null })
+  assert.deepEqual(fixture.views.calls.reads, ['/books/Unknown.pdf'])
+
+  const invalid = await callRoute(fixture.handler, {
+    url: query('/dsh-pdf-reader/view', { path: 'relative.pdf' }),
+  })
+  assert.equal(invalid.status, 400)
+  assert.deepEqual(invalid.json(), { ok: false, error: 'invalid-path' })
+
+  const missing = await callRoute(fixture.handler, { url: '/dsh-pdf-reader/view' })
+  assert.equal(missing.status, 400)
+  assert.deepEqual(missing.json(), { ok: false, error: 'invalid-path' })
+})
+
+await test('POST /view then GET /view round-trips page, zoom mode, and scale', async () => {
+  const fixture = await makeRouteFixture({ views: makeFakeViews() })
+  const before = Date.now()
+  const post = await postView(fixture.handler, {
+    path: PDF,
+    pdfPage: 152,
+    zoomMode: 'fit-width',
+    zoomScale: 1.5,
+  })
+  const after = Date.now()
+  assert.equal(post.status, 200)
+  assert.deepEqual(post.json(), { ok: true })
+  assert.equal(fixture.views.calls.writes.length, 1)
+  const written = fixture.views.calls.writes[0]
+  assert.equal(written.path, PDF)
+  assert.equal(written.pdfPage, 152)
+  assert.equal(written.zoomMode, 'fit-width')
+  assert.equal(written.zoomScale, 1.5)
+  assert.ok(Number.isInteger(written.updatedAt) && written.updatedAt >= before && written.updatedAt <= after)
+
+  const get = await callRoute(fixture.handler, {
+    url: query('/dsh-pdf-reader/view', { path: PDF }),
+  })
+  assert.equal(get.status, 200)
+  const payload = get.json()
+  assert.equal(payload.ok, true)
+  assert.deepEqual(payload.view, {
+    path: PDF,
+    pdfPage: 152,
+    zoomMode: 'fit-width',
+    zoomScale: 1.5,
+    updatedAt: written.updatedAt,
+  })
+  assert.equal(get.headers['access-control-allow-origin'], undefined)
+
+  const fixed = await postView(fixture.handler, {
+    path: PDF,
+    pdfPage: 3,
+    zoomMode: 'fixed',
+    zoomScale: 4,
+  })
+  assert.equal(fixed.status, 200)
+  const replaced = await callRoute(fixture.handler, {
+    url: query('/dsh-pdf-reader/view', { path: PDF }),
+  })
+  assert.equal(replaced.json().view.pdfPage, 3)
+  assert.equal(replaced.json().view.zoomMode, 'fixed')
+  assert.equal(replaced.json().view.zoomScale, 4)
+})
+
+await test('POST /view enforces JSON type, body cap, and field validation', async () => {
+  const fixture = await makeRouteFixture({ views: makeFakeViews() })
+  const handler = fixture.handler
+  const valid = { path: PDF, pdfPage: 1, zoomMode: 'fixed', zoomScale: 1 }
+
+  const wrongType = await postView(handler, 'not json', { contentType: 'text/plain' })
+  assert.equal(wrongType.status, 415)
+  assert.deepEqual(wrongType.json(), { ok: false, error: 'unsupported-media-type' })
+
+  const tooLarge = await postView(handler, {
+    ...valid,
+    padding: 'x'.repeat(70_000),
+  })
+  assert.equal(tooLarge.status, 413)
+  assert.deepEqual(tooLarge.json(), { ok: false, error: 'body-too-large' })
+
+  const badJson = await postView(handler, '{')
+  assert.equal(badJson.status, 400)
+  assert.deepEqual(badJson.json(), { ok: false, error: 'invalid-json' })
+
+  for (const path of ['relative.pdf', '/books/notes.txt', `/${'a'.repeat(5000)}.pdf`, '']) {
+    const response = await postView(handler, { ...valid, path })
+    assert.equal(response.status, 400, `path ${JSON.stringify(path.slice(0, 24))}`)
+    assert.deepEqual(response.json(), { ok: false, error: 'invalid-path' })
+  }
+
+  for (const pdfPage of [0, -1, 1.5, 100001, '1', null]) {
+    const response = await postView(handler, { ...valid, pdfPage })
+    assert.equal(response.status, 400, `page ${String(pdfPage)}`)
+    assert.deepEqual(response.json(), { ok: false, error: 'invalid-page' })
+  }
+
+  for (const zoomMode of ['fit', 'FIT-WIDTH', 'width', null]) {
+    const response = await postView(handler, { ...valid, zoomMode })
+    assert.equal(response.status, 400, `mode ${String(zoomMode)}`)
+    assert.deepEqual(response.json(), { ok: false, error: 'invalid-zoom-mode' })
+  }
+
+  for (const zoomScale of [0.2, 4.01, '1.5', null]) {
+    const response = await postView(handler, { ...valid, zoomScale })
+    assert.equal(response.status, 400, `scale ${String(zoomScale)}`)
+    assert.deepEqual(response.json(), { ok: false, error: 'invalid-zoom-scale' })
+  }
+
+  const wrongMethod = await callRoute(handler, {
+    method: 'PUT',
+    url: '/dsh-pdf-reader/view',
+    body: JSON.stringify(valid),
+  })
+  assert.equal(wrongMethod.status, 405)
+  assert.deepEqual(wrongMethod.json(), { ok: false, error: 'method-not-allowed' })
+
+  assert.equal(fixture.views.calls.writes.length, 0)
+  assert.equal(fixture.views.calls.reads.length, 0)
+})
+
+await test('rememberView:false answers null/no-op without touching storage', async () => {
+  const views = makeFakeViews()
+  views.records.set(PDF, { path: PDF, pdfPage: 9, zoomMode: 'fixed', zoomScale: 2, updatedAt: 1 })
+  const fixture = await makeRouteFixture({ config: { rememberView: false }, views })
+
+  const get = await callRoute(fixture.handler, {
+    url: query('/dsh-pdf-reader/view', { path: PDF }),
+  })
+  assert.equal(get.status, 200)
+  assert.deepEqual(get.json(), { ok: true, view: null })
+
+  const post = await postView(fixture.handler, {
+    path: PDF,
+    pdfPage: 1,
+    zoomMode: 'fixed',
+    zoomScale: 1,
+  })
+  assert.equal(post.status, 200)
+  assert.deepEqual(post.json(), { ok: true })
+
+  const invalid = await postView(fixture.handler, { path: PDF, pdfPage: 0 })
+  assert.equal(invalid.status, 400)
+  assert.deepEqual(invalid.json(), { ok: false, error: 'invalid-page' })
+
+  assert.equal(views.calls.reads.length, 0)
+  assert.equal(views.calls.writes.length, 0)
+})
+
+await test('unavailable storage answers GET null and POST 503', async () => {
+  const fixture = await makeRouteFixture()
+  assert.equal(fixture.views.available, false)
+
+  const get = await callRoute(fixture.handler, {
+    url: query('/dsh-pdf-reader/view', { path: PDF }),
+  })
+  assert.equal(get.status, 200)
+  assert.deepEqual(get.json(), { ok: true, view: null })
+
+  const post = await postView(fixture.handler, {
+    path: PDF,
+    pdfPage: 5,
+    zoomMode: 'fit-width',
+    zoomScale: 1,
+  })
+  assert.equal(post.status, 503)
+  assert.deepEqual(post.json(), { ok: false, error: 'storage-unavailable' })
+
+  const failing = makeFakeViews()
+  failing.setAvailable(false)
+  const failingFixture = await makeRouteFixture({ views: failing })
+  const failingPost = await postView(failingFixture.handler, {
+    path: PDF,
+    pdfPage: 5,
+    zoomMode: 'fit-width',
+    zoomScale: 1,
+  })
+  assert.equal(failingPost.status, 503)
+  assert.deepEqual(failingPost.json(), { ok: false, error: 'storage-unavailable' })
+
+  // An adapter that throws still degrades at the route boundary.
+  const throwing = await makeRouteFixture({
+    views: {
+      async read() {
+        throw new Error('read boom')
+      },
+      async write() {
+        throw new Error('write boom')
+      },
+    },
+  })
+  const throwingGet = await callRoute(throwing.handler, {
+    url: query('/dsh-pdf-reader/view', { path: PDF }),
+  })
+  assert.equal(throwingGet.status, 200)
+  assert.deepEqual(throwingGet.json(), { ok: true, view: null })
+  const throwingPost = await postView(throwing.handler, {
+    path: PDF,
+    pdfPage: 5,
+    zoomMode: 'fit-width',
+    zoomScale: 1,
+  })
+  assert.equal(throwingPost.status, 503)
+})
+
+await test('createViewDomainSpec declares book_reader_views version 1 with a views table', async () => {
+  const spec = await host.createViewDomainSpec()
+  assert.equal(spec.name, 'book_reader_views')
+  assert.equal(spec.version, 1)
+  assert.equal(spec.layout, 'single')
+  assert.deepEqual(Object.keys(spec.tables), ['views'])
+  assert.deepEqual(Object.keys(spec.tables.views.schema.shape), [
+    'path',
+    'pdfPage',
+    'zoomMode',
+    'zoomScale',
+    'updatedAt',
+  ])
+})
+
+await test('openViewStateDomain opens through storageDomain and rejects unavailable services', async () => {
+  const table = makeFakeViewTable()
+  let opened = null
+  let closes = 0
+  const domain = {
+    table(name) {
+      assert.equal(name, 'views')
+      return table
+    },
+    async close() {
+      closes += 1
+    },
+  }
+  const storageDomain = {
+    async open(spec) {
+      opened = spec
+      return domain
+    },
+  }
+  const result = await host.openViewStateDomain(storageDomain)
+  assert.equal(result, domain)
+  assert.equal(opened.name, 'book_reader_views')
+  await result.close()
+  assert.equal(closes, 1)
+
+  await assert.rejects(host.openViewStateDomain(undefined), /storageDomain service is unavailable/u)
+  await assert.rejects(
+    host.openViewStateDomain({
+      async open() {
+        throw new Error('no backend')
+      },
+    }),
+    /no backend/u,
+  )
+})
+
+await test('view adapter hashes paths, verifies records, and degrades without a table', async () => {
+  const table = makeFakeViewTable()
+  const adapter = host.createViewStateAdapter()
+  const record = { path: PDF, pdfPage: 152, zoomMode: 'fit-width', zoomScale: 1.5, updatedAt: 42 }
+
+  assert.equal(adapter.available, false)
+  assert.equal(await adapter.read(PDF), null)
+  assert.equal(await adapter.write(record), false)
+
+  adapter.attach(table)
+  assert.equal(adapter.available, true)
+  assert.equal(await adapter.write(record), true)
+  assert.deepEqual(await adapter.read(PDF), record)
+  assert.equal(table.records.has(host.viewKeyForPath(PDF)), true)
+  assert.equal(host.viewKeyForPath(PDF), createHash('sha256').update(PDF, 'utf8').digest('hex'))
+  assert.equal(await adapter.read('/books/other.pdf'), null)
+
+  // A record filed under this key but naming another book is not trusted.
+  table.records.set(host.viewKeyForPath(PDF), { ...record, path: '/books/other.pdf' })
+  assert.equal(await adapter.read(PDF), null)
+
+  adapter.detach()
+  assert.equal(adapter.available, false)
+  assert.equal(await adapter.read(PDF), null)
+})
+
+await test('view adapter prunes the oldest records past the 500-record cap', async () => {
+  const table = makeFakeViewTable()
+  const adapter = host.createViewStateAdapter()
+  adapter.attach(table)
+  for (let index = 0; index < 501; index += 1) {
+    const path = `/books/book-${index}.pdf`
+    assert.equal(
+      await adapter.write({
+        path,
+        pdfPage: 1,
+        zoomMode: 'fixed',
+        zoomScale: 1,
+        updatedAt: index,
+      }),
+      true,
+    )
+  }
+  assert.equal(table.size, 500)
+  assert.equal(table.records.has(host.viewKeyForPath('/books/book-0.pdf')), false)
+  assert.equal(table.records.has(host.viewKeyForPath('/books/book-500.pdf')), true)
+  assert.equal(table.deleted.length, 1)
+})
+
+await test('view adapter warns at most once and contains storage failures', async () => {
+  const warnings = []
+  const adapter = host.createViewStateAdapter({ warn: (message) => warnings.push(message) })
+  const failingTable = {
+    get size() {
+      return 0
+    },
+    get() {
+      throw new Error('read boom')
+    },
+    entries() {
+      return [][Symbol.iterator]()
+    },
+    async put() {
+      throw new Error('write boom')
+    },
+    async delete() {},
+  }
+  adapter.attach(failingTable)
+  assert.equal(await adapter.read(PDF), null)
+  assert.equal(
+    await adapter.write({ path: PDF, pdfPage: 1, zoomMode: 'fixed', zoomScale: 1, updatedAt: 1 }),
+    false,
+  )
+  assert.equal(warnings.length, 1)
+  assert.match(warnings[0], /dsh-pdf-reader/u)
+})
+
+await test('apply closes the opened view domain through the injection disposer', async () => {
+  let closes = 0
+  const disposers = []
+  const table = makeFakeViewTable()
+  const storageDomain = {
+    async open() {
+      return {
+        table() {
+          return table
+        },
+        async close() {
+          closes += 1
+        },
+      }
+    },
+  }
+  const ctx = {
+    tools: { register: () => {} },
+    webServer: { register: () => () => {} },
+    effect: (factory) => {
+      factory()
+      return () => {}
+    },
+    on: () => () => {},
+    inject: (deps, callback) => {
+      const result = callback({ tools: ctx.tools, get: () => undefined, storageDomain })
+      if (typeof result === 'function') disposers.push(result)
+      return () => {}
+    },
+    get: () => undefined,
+  }
+  host.apply(ctx, { autoShare: false })
+  await new Promise((resolve) => setTimeout(resolve, 25))
+  assert.equal(closes, 0)
+  assert.equal(disposers.length, 1)
+  await disposers[0]()
+  assert.equal(closes, 1)
+})
+
+await test('apply degrades to storage-unavailable when the domain cannot open', async () => {
+  const warnings = []
+  const originalWarn = console.warn
+  console.warn = (...args) => warnings.push(args.join(' '))
+  try {
+    const fixture = makeApplyContext({
+      storageDomain: makeFakeStorageDomain({ failOpen: true }),
+    })
+    host.apply(fixture.ctx, {})
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    assert.equal(
+      warnings.filter((line) => line.includes('remembered page/zoom storage is unavailable')).length,
+      1,
+    )
+
+    const post = await postView(fixture.routes[0].handler, {
+      path: PDF,
+      pdfPage: 1,
+      zoomMode: 'fixed',
+      zoomScale: 1,
+    })
+    assert.equal(post.status, 503)
+    assert.deepEqual(post.json(), { ok: false, error: 'storage-unavailable' })
+
+    const get = await callRoute(fixture.routes[0].handler, {
+      url: query('/dsh-pdf-reader/view', { path: PDF }),
+    })
+    assert.equal(get.status, 200)
+    assert.deepEqual(get.json(), { ok: true, view: null })
+  } finally {
+    console.warn = originalWarn
+  }
+})
+
+// ---------------------------------------------------------------------------
 // Tool registration and image-bearing read tool
 // ---------------------------------------------------------------------------
 
@@ -901,71 +1471,35 @@ function makeExec(sessionId = 's1') {
 }
 
 await test('apply registers two cheap tools, one image tool, one route, and the pre-step listener', () => {
-  const tools = []
-  const routes = []
-  const listeners = []
-  let injections = 0
-  const ctx = {
-    tools: { register: (definition) => tools.push(definition) },
-    webServer: {
-      register: (route) => {
-        routes.push(route)
-        return () => {}
-      },
-    },
-    effect: (factory) => {
-      factory()
-      return () => {}
-    },
-    on: (event, listener, options) => {
-      listeners.push({ event, listener, options })
-      return () => {}
-    },
-    inject: (deps, callback) => {
-      injections += 1
-      callback({ tools: ctx.tools, get: ctx.get })
-      return () => {}
-    },
-    get: () => undefined,
-  }
-  host.apply(ctx, {})
-  assert.deepEqual(tools.map((tool) => tool.name), ['pdf_info', 'pdf_search', 'pdf_read_pages'])
-  assert.equal(injections, 1)
-  assert.equal(routes.length, 1)
-  assert.equal(routes[0].kind, 'prefix')
-  assert.equal(routes[0].path, '/dsh-pdf-reader')
-  assert.equal(listeners.length, 1)
-  assert.equal(listeners[0].event, 'agent/pre-step')
-  assert.equal(listeners[0].options.prepend, true)
+  const fixture = makeApplyContext()
+  host.apply(fixture.ctx, {})
+  assert.deepEqual(fixture.tools.map((tool) => tool.name), ['pdf_info', 'pdf_search', 'pdf_read_pages'])
+  assert.equal(fixture.injections, 2, 'attachments and storageDomain injections')
+  assert.equal(fixture.routes.length, 1)
+  assert.equal(fixture.routes[0].kind, 'prefix')
+  assert.equal(fixture.routes[0].path, '/dsh-pdf-reader')
+  assert.equal(fixture.listeners.length, 1)
+  assert.equal(fixture.listeners[0].event, 'agent/pre-step')
+  assert.equal(fixture.listeners[0].options.prepend, true)
 })
 
-await test('apply honors autoShare:false and enabled:false', () => {
-  const build = () => {
-    const tools = []
-    const listeners = []
-    const ctx = {
-      tools: { register: (definition) => tools.push(definition) },
-      webServer: { register: () => () => {} },
-      effect: (factory) => {
-        factory()
-        return () => {}
-      },
-      on: (event, listener, options) => listeners.push({ event, listener, options }),
-      inject: (deps, callback) => callback({ tools: ctx.tools, get: ctx.get }),
-      get: () => undefined,
-    }
-    return { ctx, tools, listeners }
-  }
-
-  const noShare = build()
+await test('apply honors autoShare:false, rememberView:false, and enabled:false', () => {
+  const noShare = makeApplyContext()
   host.apply(noShare.ctx, { autoShare: false })
   assert.equal(noShare.tools.length, 3)
   assert.equal(noShare.listeners.length, 0)
+  assert.equal(noShare.injections, 2)
 
-  const disabled = build()
+  const noView = makeApplyContext()
+  host.apply(noView.ctx, { rememberView: false })
+  assert.equal(noView.tools.length, 3)
+  assert.equal(noView.injections, 1, 'rememberView:false skips the storage domain')
+
+  const disabled = makeApplyContext()
   host.apply(disabled.ctx, { enabled: false })
   assert.equal(disabled.tools.length, 0)
   assert.equal(disabled.listeners.length, 0)
+  assert.equal(disabled.injections, 0)
 })
 
 await test('pdf_read_pages renders printed pages, saves attachments, and emits image blocks', async () => {

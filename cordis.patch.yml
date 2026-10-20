@@ -1,8 +1,9 @@
 # dsh-book-reader bundle patch: mount the plugin into the active profile.
 # Host half: pdf_info / pdf_search / pdf_read_pages tools,
-#            /dsh-book-reader/* routes, and a minimal per-turn reading-position
-#            line injected through agent/pre-step.
-# Browser half: page readout, jump, search panel, and share-to-chat on top of
+#            /dsh-pdf-reader/* routes (PDF info/search, reading position, saved
+#            page/zoom), and a minimal per-turn reading-position line injected
+#            through agent/pre-step.
+# Browser half: page readout, jump, search panel, remembered page/zoom on top of
 #               the official PDF preview's document-header slot.
 #
 # All config keys are optional. The defaults shown are the shipped behavior.
@@ -11,6 +12,7 @@
       name: 'dsh-book-reader'
       # config:
       #   enabled: true
+      #   rememberView: true              # remember last page + zoom per book
       #   autoShare: true                 # false stops position hints
       #   autoShareSection: true          # include the outline section in the line
       #   autoShareMinIntervalMs: 0       # optional: min ms between hints (0 = no time throttle)
