@@ -42,13 +42,14 @@ ln -sfn "<installed package dir>" "<workspace>/.dsh/skills/pdf-reader"
 | Tool | Use it for | Cost |
 | --- | --- | --- |
 | `pdf_info` | Page count, printed↔physical page offset, outline/TOC | text, ~free |
-| `pdf_search` | Finding a phrase, theorem number, or figure caption. Tolerates quotes/LaTeX, hyphen and math-notation splits, with keyword fallbacks; body pages first | text, ~free |
+| `pdf_search` | Finding a phrase, theorem number, or figure caption. Tolerates quotes/LaTeX, hyphen and math-notation splits, with keyword fallbacks; body pages first; optional `pages` range | text, ~free |
 | `pdf_read_pages` | Reading chosen pages as text, optionally with page images | text ~free; images ~350–1024 tokens/page |
 
 Example prompts:
 
 > “What does chapter 5 of this book cover?” → `pdf_info` + `pdf_read_pages`
 > “Find where ‘singular value’ appears.” → `pdf_search`
+> “Search only chapter 7 (printed pp. 270–295) for ‘SVD’.” → `pdf_search` with `pages:"270-295"`
 > “Show me the formula in theorem 5.6.” → `pdf_read_pages` with images
 
 The model decides when text is enough and when an image is worth it.

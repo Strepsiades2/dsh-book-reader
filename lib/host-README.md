@@ -46,7 +46,7 @@ Returns:
 matter. The route's outline is capped by `maxOutlineEntries` (default 500); the
 tool caps at 200 regardless.
 
-### `pdf_search({ path, query, ignore_case?, limit? })`
+### `pdf_search({ path, query, pages?, page_numbers?, ignore_case?, limit? })`
 
 Normalized text-layer search. No images. Hits are locations, not evidence:
 extracted math is unreliable.
@@ -58,10 +58,18 @@ dash variants and line-break hyphenation removed, then falls back in order:
 `L(V)` finds `ℒ (𝑉)`) → `terms` (every word must occur, AND). The returned
 `mode` says which pass won.
 
+`pages` optionally narrows the scan to a selection (same grammar as
+`pdf_read_pages`); printed pages are the default when the PDF has numeric labels,
+and `pages`/`pages` in the result then count matches inside the range. This is
+the intended way to search near a later chapter instead of letting earlier pages
+fill the hit budget.
+
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `path` | string | — | Absolute `.pdf` path, or session-relative. |
 | `query` | string | — | Non-empty text; wrapping quotes/backticks/`$…$` are stripped. |
+| `pages` | string \| integer \| array | all pages | Optional 1-based selection: `"270-295"`, `"132,135"`, `132`, `[132,133]`. |
+| `page_numbers` | `"printed"` \| `"pdf"` | auto | How to read `pages`; auto = printed when numeric labels exist. |
 | `ignore_case` | boolean | `true` | Case-insensitive search. |
 | `limit` | integer | `30` | Maximum hits; clamped to `maxSearchResults`. |
 

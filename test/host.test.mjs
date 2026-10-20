@@ -1758,6 +1758,23 @@ await test('pdf_search strips query wrappers, defaults limit 30, and reports mod
     'PDF_READER_INVALID_QUERY',
   )
 
+  // Optional page range: printed numbers by default, explicit pdf mode wins.
+  const ranged = await tool.execute({ path: PDF, query: 'eigenvalue', pages: '132-134' }, makeExec())
+  assert.deepEqual(calls[2].options, { ignoreCase: true, limit: 30, pdfPages: [152, 153, 154] })
+  assert.equal(ranged.mode, 'terms')
+
+  await tool.execute({ path: PDF, query: 'eigenvalue', pages: 300, page_numbers: 'pdf' }, makeExec())
+  assert.deepEqual(calls[3].options, { ignoreCase: true, limit: 30, pdfPages: [300] })
+
+  await assertRejectsCode(
+    tool.execute({ path: PDF, query: 'eigenvalue', pages: '0' }, makeExec()),
+    'PDF_READER_INVALID_PAGE',
+  )
+  await assertRejectsCode(
+    tool.execute({ path: PDF, query: 'eigenvalue', pages: '132-134', page_numbers: 'nope' }, makeExec()),
+    'PDF_READER_INVALID_PAGE_MODE',
+  )
+
   // A query made only of dashes is non-empty after tool cleanup but empties
   // during core normalization; that must still surface as invalid input.
   core.searchPdf = async () => {

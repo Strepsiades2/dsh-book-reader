@@ -38,7 +38,7 @@ export async function getInfo(path)
 //      outline: [{ title, pdf, printed, depth }] }
 
 export async function getPageText(path, pdfPage)      // -> string
-export async function searchPdf(path, query, opts)    // opts: {ignoreCase=true, limit=200, contextChars=80}
+export async function searchPdf(path, query, opts)    // opts: {ignoreCase=true, limit=200, contextChars=80, pdfPages?}
 // -> { hits: [{ pdf, printed, indexOnPage, snippet }], pages: <pages with hits>,
 //      mode: 'phrase' | 'compact' | 'terms' }
 export async function closePdf(path)                  // optional cache eviction -> boolean
@@ -122,6 +122,10 @@ pairs preserved).
   leading/trailing `…` when the hit is mid-page.
 * `limit` caps the returned hits (default 200); the scan continues to the last
   page so `pages` is accurate.
+* `pdfPages` (optional) is an array of 1-based **physical** pages to scan; the
+  tool maps printed page ranges to it. `pages` then counts matches inside that
+  range only. Out-of-document pages throw a `RangeError` with
+  `code = 'PDF_PAGE_OUT_OF_RANGE'`.
 * `contextChars` defaults to 80.
 * The analysis above is one `await` per page, so the event loop stays responsive.
   A 410-page phrase search takes roughly 0.8–1.1 s; a query that also runs the
@@ -129,7 +133,7 @@ pairs preserved).
 
 An empty query after cleaning (including quotes or `---`) throws `TypeError`;
 queries longer than 1000 characters throw as well. Invalid
-`limit`/`contextChars` throw `RangeError`.
+`limit`/`contextChars`/`pdfPages` throw `RangeError`.
 
 ### `closePdf(path)`
 

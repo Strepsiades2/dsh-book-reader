@@ -327,6 +327,32 @@ try {
     assert.equal(typeof result.hits[0].printed, 'number', 'body pages come first')
   })
 
+  await step('pdfPages restricts the scan to a page range', async () => {
+    const whole = await searchPdf(BOOK, 'eigenvalue', { limit: 5000 })
+    const scoped = await searchPdf(BOOK, 'eigenvalue', { limit: 5000, pdfPages: [152, 153] })
+    assert.equal(scoped.mode, 'phrase')
+    assert.ok(scoped.pages >= 1 && scoped.pages <= 2, `scoped pages = ${scoped.pages}`)
+    assert.ok(scoped.pages < whole.pages, 'pages counts only the scanned range')
+    assert.ok(scoped.hits.length > 0)
+    assert.ok(scoped.hits.every((hit) => hit.pdf === 152 || hit.pdf === 153))
+
+    const singlePage = await searchPdf(BOOK, 'singular value decomposition', {
+      limit: 5,
+      pdfPages: [293],
+    })
+    assert.equal(singlePage.pages, 1)
+    assert.ok(singlePage.hits.every((hit) => hit.pdf === 293))
+    assert.equal(typeof singlePage.hits[0].printed, 'number')
+
+    await assert.rejects(searchPdf(BOOK, 'eigenvalue', { pdfPages: [] }), /pdfPages must not be empty/)
+    await assert.rejects(searchPdf(BOOK, 'eigenvalue', { pdfPages: 0 }), /must be an array/)
+    await assert.rejects(searchPdf(BOOK, 'eigenvalue', { pdfPages: [0] }), /positive integers/)
+    await assert.rejects(searchPdf(BOOK, 'eigenvalue', { pdfPages: [411] }), (error) => {
+      assert.equal(error.code, 'PDF_PAGE_OUT_OF_RANGE')
+      return true
+    })
+  })
+
   // -------------------------------------------------------------------------
   // Rendering
   // -------------------------------------------------------------------------

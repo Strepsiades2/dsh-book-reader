@@ -11,7 +11,7 @@ expense, not the first move.
 | Tool | Cost | Use for |
 | --- | --- | --- |
 | `pdf_info` | ~0 (text) | page count, printed↔physical offset, outline/TOC |
-| `pdf_search` | ~0 (text) | locating a phrase, theorem number, or figure caption (quotes and `$…$` are stripped) |
+| `pdf_search` | ~0 (text) | locating a phrase, theorem number, or figure caption (quotes and `$…$` are stripped; optional `pages` range) |
 | `pdf_read_pages` + `include_image:false` | ~0 (text, per page) | prose, theorem statements, exercise text |
 | `pdf_read_pages` (images on) | **~350–1024 tokens/page** | formulas, diagrams, tables, layout |
 
@@ -21,7 +21,10 @@ expense, not the first move.
    hardcode an offset; it is detected (`printed = pdf − printedOffset`).
 2. `pdf_search` for a short, distinctive phrase → page numbers. If the result's
    `mode` is not `"phrase"` (i.e. `"compact"` or `"terms"`), treat the hits as
-   candidate pages and read them before quoting exact wording.
+   candidate pages and read them before quoting exact wording. When the reader
+   is late in the book (or the position hint says so), pass `pages:"…"` around
+   the current printed page (e.g. `pages:"270-295"`) so earlier chapters cannot
+   crowd the 30-hit budget; `page_numbers:"pdf"` switches to physical pages.
 3. `pdf_read_pages` with **`include_image:false`** to read those pages as text.
 4. Only if the text is ambiguous or the question is about typography (a formula,
    a diagram, a table) → call again with images on, and crop.
@@ -93,6 +96,11 @@ needs it, and prefer `include_image:false` first.
   before front matter (at most 3 front-matter hits), `pages` counts every matched
   page before `limit`, and the default limit is 30. If a query finds nothing, try
   one shorter distinctive word and read the pages rather than assuming absence.
+- **`pdf_search` can be scoped to a page range.** `pages:"270-295"` (same syntax
+  as `pdf_read_pages`, printed pages by default) only scans those pages; the
+  returned `pages` count then counts matches inside that range. Use it when the
+  user is reading a later chapter and whole-book hits would be dominated by
+  earlier pages.
 - Page numbers are 1-based; relative paths resolve against the session directory.
 - No annotation/note features: this plugin reads and renders only.
 

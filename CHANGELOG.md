@@ -21,6 +21,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   front-matter hits), `pages` counts every matched page, and the tool default
   limit is 30. The tool description now states these rules so the model stops
   passing quoted or LaTeX-marked phrases.
+- `pdf_search` accepts an optional `pages` selection (the same syntax as
+  `pdf_read_pages`; printed pages by default, `page_numbers:"pdf"` for physical
+  pages) to scan only a page range and report matches inside it. This keeps a
+  late-chapter search from being crowded out by earlier pages.
 
 ### Fixed
 
