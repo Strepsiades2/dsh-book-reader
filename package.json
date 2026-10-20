@@ -74,6 +74,7 @@
     "SKILL.md",
     "cordis.patch.yml",
     "README.md",
+    "README.zh-CN.md",
     "LICENSE",
     "icon.svg",
     "locale/*.json",
