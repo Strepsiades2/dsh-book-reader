@@ -13,6 +13,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   previous/next buttons) jump between occurrences with an `n / total` counter.
 - The search result list, its snippets, and the per-result “→ AI” insertion are
   gone; search no longer inserts anything into the composer.
+- `pdf_search` is now normalized text search: wrapping quotes/backticks and
+  `$…$` are stripped, NFKC folds math alphanumerics and ligatures, dashes and
+  line-break hyphenation are removed, and if no literal phrase matches it falls
+  back to a space-insensitive pass (`compact`) and then keyword AND (`terms`).
+  The result gains `mode`; hits rank body pages before front matter (at most 3
+  front-matter hits), `pages` counts every matched page, and the tool default
+  limit is 30. The tool description now states these rules so the model stops
+  passing quoted or LaTeX-marked phrases.
 
 ### Fixed
 

@@ -11,7 +11,7 @@
 ## Why this one
 
 - **Native, not a replacement.** It decorates DSH's own PDF preview, so zoom, text selection, reload, and Office→PDF keep working. No extra viewer, no sidebar dependency.
-- **The model can actually read the book.** Three tools give it the page map, literal full-text search, and page content, with page images only when needed.
+- **The model can actually read the book.** Three tools give it the page map, text search, and page content, with page images only when needed.
 - **It remembers where you were.** Reopening a book restores the last page and zoom.
 
 ## Quick start
@@ -42,7 +42,7 @@ ln -sfn "<installed package dir>" "<workspace>/.dsh/skills/pdf-reader"
 | Tool | Use it for | Cost |
 | --- | --- | --- |
 | `pdf_info` | Page count, printed↔physical page offset, outline/TOC | text, ~free |
-| `pdf_search` | Finding a phrase, theorem number, or figure caption | text, ~free |
+| `pdf_search` | Finding a phrase, theorem number, or figure caption. Tolerates quotes/LaTeX, hyphen and math-notation splits, with keyword fallbacks; body pages first | text, ~free |
 | `pdf_read_pages` | Reading chosen pages as text, optionally with page images | text ~free; images ~350–1024 tokens/page |
 
 Example prompts:
@@ -71,6 +71,8 @@ The full list with defaults is in [`cordis.patch.yml`](cordis.patch.yml).
 **The model does not know my page.** The hint is sent at most once per turn and only when the page changed; turn on `AI●`, or mention the page in your message.
 
 **Scanned PDFs.** No text layer: search finds nothing and text reads are empty. Page images still work — check `textCoverage.isLikelyScanned` from `pdf_info`.
+
+**Search finds nothing.** Quotes and `$…$` are stripped, hyphen/math splits and missing spaces have fallbacks, and when no literal phrase matches the tool falls back to keyword AND (`mode` in the result says which pass matched). Try one short distinctive word.
 
 **Does it modify my PDF?** No. It only reads and renders; nothing is written next to your books.
 

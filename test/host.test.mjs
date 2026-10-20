@@ -892,6 +892,7 @@ await test('GET /search validates the query and maps/clamps hits', async () => {
   assert.equal(response.status, 200)
   const payload = response.json()
   assert.equal(payload.ok, true)
+  assert.equal(payload.mode, 'phrase')
   assert.equal(payload.hits.length, 2)
   assert.deepEqual(payload.hits[0], {
     pdf: 152,
@@ -904,6 +905,19 @@ await test('GET /search validates the query and maps/clamps hits', async () => {
     query: 'singular value',
     options: { ignoreCase: true, limit: fixture.config.maxSearchResults },
   })
+
+  const quoted = await callRoute(fixture.handler, {
+    url: query('/dsh-pdf-reader/search', {
+      path: PDF,
+      q: '"singular value"',
+      ignoreCase: '1',
+      limit: '500',
+    }),
+  })
+  assert.equal(quoted.status, 200)
+  assert.equal(quoted.json().mode, 'phrase')
+  assert.equal(fixture.calls.length, 2)
+  assert.equal(fixture.calls[1].query, 'singular value', 'route strips wrapping quotes')
 })
 
 await test('POST /current stores a session position; GET /current returns it with its section', async () => {
@@ -1700,12 +1714,16 @@ await test('pdf_read_pages maps attachment size failures to a crop/downscale hin
   )
 })
 
-await test('pdf_search defaults to ignore-case and caps the limit', async () => {
+await test('pdf_search strips query wrappers, defaults limit 30, and reports mode', async () => {
   const calls = []
   const core = {
     async searchPdf(path, query, options) {
       calls.push({ path, query, options })
-      return { hits: [{ pdf: 10, printed: null, indexOnPage: 1, snippet: 'x' }], pages: 7 }
+      return {
+        hits: [{ pdf: 10, printed: null, indexOnPage: 1, snippet: 'x' }],
+        pages: 7,
+        mode: 'terms',
+      }
     },
   }
   const tool = host.createCheapTools({
@@ -1715,10 +1733,37 @@ await test('pdf_search defaults to ignore-case and caps the limit', async () => 
     infoCache: host.createInfoCache({ getInfo: async () => INFO, statFile: async () => PDF_STAT }),
     statFile: async () => PDF_STAT,
   }).find((definition) => definition.name === 'pdf_search')
-  const value = await tool.execute({ path: PDF, query: 'eigenvalue', limit: 500 }, makeExec())
-  assert.deepEqual(calls[0].options, { ignoreCase: true, limit: 50 })
+
+  assert.equal(tool.output.schema.properties.mode.required, true)
+  assert.deepEqual(tool.output.schema.properties.mode.enum, ['phrase', 'compact', 'terms'])
+
+  const value = await tool.execute({ path: PDF, query: '"eigenvalue"' }, makeExec())
+  assert.deepEqual(calls[0].options, { ignoreCase: true, limit: 30 })
+  assert.equal(calls[0].query, 'eigenvalue', 'wrapping quotes are stripped before the core call')
+  assert.equal(value.query, 'eigenvalue')
   assert.equal(value.pages, 7)
   assert.equal(value.hits[0].snippet, 'x')
+  assert.equal(value.mode, 'terms', 'the core mode is forwarded')
+
+  const capped = await tool.execute(
+    { path: PDF, query: 'eigenvalue', limit: 500, ignore_case: false },
+    makeExec(),
+  )
+  assert.deepEqual(calls[1].options, { ignoreCase: false, limit: 50 })
+  assert.equal(capped.mode, 'terms')
+
+  await assertRejectsCode(tool.execute({ path: PDF, query: '""' }, makeExec()), 'PDF_READER_INVALID_QUERY')
+  await assertRejectsCode(
+    tool.execute({ path: PDF, query: 'x'.repeat(1001) }, makeExec()),
+    'PDF_READER_INVALID_QUERY',
+  )
+
+  // A query made only of dashes is non-empty after tool cleanup but empties
+  // during core normalization; that must still surface as invalid input.
+  core.searchPdf = async () => {
+    throw new TypeError('searchPdf: query must be a non-empty string')
+  }
+  await assertRejectsCode(tool.execute({ path: PDF, query: '---' }, makeExec()), 'PDF_READER_INVALID_QUERY')
 })
 
 // ---------------------------------------------------------------------------

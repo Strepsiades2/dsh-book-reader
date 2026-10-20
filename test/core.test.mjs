@@ -16,7 +16,16 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { closePdf, getInfo, getPageText, searchPdf } from '../lib/core/pdf.js'
+import {
+  buildSearchLayout,
+  cleanSearchQuery,
+  closePdf,
+  getInfo,
+  getPageText,
+  normalizeSearchText,
+  rankSearchHits,
+  searchPdf,
+} from '../lib/core/pdf.js'
 import { renderPageToPng, renderPagesToPng } from '../lib/core/render.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -176,6 +185,149 @@ try {
   })
 
   // -------------------------------------------------------------------------
+  // Query cleanup, normalisation maps, ranking (pure helpers)
+  // -------------------------------------------------------------------------
+  await step('cleanSearchQuery strips wrapping quotes/backticks/$…$', () => {
+    assert.equal(cleanSearchQuery('"eigenvalue"'), 'eigenvalue')
+    assert.equal(cleanSearchQuery("'eigenvalue'"), 'eigenvalue')
+    assert.equal(cleanSearchQuery('“eigenvalue”'), 'eigenvalue')
+    assert.equal(cleanSearchQuery('‘eigenvalue’'), 'eigenvalue')
+    assert.equal(cleanSearchQuery('`eigenvalue`'), 'eigenvalue')
+    assert.equal(cleanSearchQuery('$L(V)$'), 'L(V)')
+    assert.equal(cleanSearchQuery('  "  eigenvalue  "  '), 'eigenvalue')
+    assert.throws(() => cleanSearchQuery('   '), /query must be a non-empty string/)
+    assert.throws(() => cleanSearchQuery('""'), /query must be a non-empty string/)
+    assert.throws(() => cleanSearchQuery('x'.repeat(1001)), /longer than 1000 characters/)
+  })
+
+  await step('normalizeSearchText folds math/ligatures and line-break hyphens', () => {
+    assert.equal(normalizeSearchText('ℒ (𝑉)'), 'L (V)')
+    assert.equal(normalizeSearchText('ﬁnite'), 'finite')
+    assert.equal(normalizeSearchText('ｆｕｌｌ'), 'full')
+    assert.equal(normalizeSearchText('com- plex'), 'complex')
+    assert.equal(normalizeSearchText('finite-dimensional'), 'finitedimensional')
+    assert.equal(normalizeSearchText('finite dimensional'), 'finite dimensional')
+  })
+
+  await step('buildSearchLayout maps normalized/compact indices to the original', () => {
+    const layout = buildSearchLayout('The ﬁnite com- plex thing')
+    assert.equal(layout.original, 'The ﬁnite com- plex thing')
+    assert.equal(layout.normalized, 'The finite complex thing')
+    assert.equal(layout.compact, 'Thefinitecomplexthing')
+
+    const normalizedIndex = layout.normalized.indexOf('complex')
+    const originalIndex = layout.normalizedToOriginal[normalizedIndex]
+    assert.equal(layout.original.slice(originalIndex, originalIndex + 9), 'com- plex')
+    assert.equal(layout.compactToNormalized[layout.compact.indexOf('complex')], normalizedIndex)
+    assert.equal(layout.normalizedLower, 'the finite complex thing')
+  })
+
+  await step('rankSearchHits puts body pages first and caps front matter at 3', () => {
+    const hits = [
+      { pdf: 1, printed: 'i', indexOnPage: 0 },
+      { pdf: 21, printed: 1, indexOnPage: 5 },
+      { pdf: 2, printed: 'ii', indexOnPage: 0 },
+      { pdf: 22, printed: 2, indexOnPage: 0 },
+      { pdf: 23, printed: 3, indexOnPage: 0 },
+      { pdf: 3, printed: 'iii', indexOnPage: 0 },
+      { pdf: 4, printed: 'iv', indexOnPage: 0 },
+    ]
+    assert.deepEqual(
+      rankSearchHits(hits, { limit: 4 }).map((hit) => hit.pdf),
+      [21, 22, 23, 1],
+      'body first, then only enough front matter to fill the limit',
+    )
+    assert.deepEqual(
+      rankSearchHits(hits, { limit: 10 }).map((hit) => hit.pdf),
+      [21, 22, 23, 1, 2, 3],
+      'at most three front-matter hits',
+    )
+  })
+
+  // -------------------------------------------------------------------------
+  // Normalized search against the real LADR PDFs
+  // -------------------------------------------------------------------------
+  const eigenvalueSearch = await step('"eigenvalue" quoted matches eigenvalue (phrase)', async () => {
+    const plain = await searchPdf(BOOK, 'eigenvalue', { limit: 30 })
+    const quoted = await searchPdf(BOOK, '"eigenvalue"', { limit: 30 })
+    assert.ok(plain.pages > 0)
+    assert.equal(plain.mode, 'phrase')
+    assert.equal(quoted.mode, 'phrase')
+    assert.equal(quoted.pages, plain.pages, 'quote cleanup leaves the page count unchanged')
+    assert.deepEqual(
+      quoted.hits.map((hit) => hit.pdf),
+      plain.hits.map((hit) => hit.pdf),
+      'quoted and unquoted hits agree',
+    )
+    return plain
+  })
+
+  await step('body-first ranking and full page count', async () => {
+    assert.equal(typeof eigenvalueSearch.hits[0].printed, 'number', 'first hit is a body page')
+    assert.ok(
+      eigenvalueSearch.pages > eigenvalueSearch.hits.length,
+      `pages (${eigenvalueSearch.pages}) counts before the limit (${eigenvalueSearch.hits.length})`,
+    )
+
+    const small = await searchPdf(BOOK, 'eigenvalue', { limit: 5 })
+    assert.equal(small.hits.length, 5, 'limit is applied to the ranked hits')
+    assert.ok(small.hits.every((hit) => typeof hit.printed === 'number'))
+    assert.ok(small.pages > small.hits.length)
+
+    const all = await searchPdf(BOOK, 'eigenvalue', { limit: 5000 })
+    const front = all.hits.filter((hit) => typeof hit.printed !== 'number')
+    assert.equal(front.length, 3, 'at most three front-matter hits are returned')
+    assert.equal(all.pages, eigenvalueSearch.pages, 'pages does not depend on the limit')
+    const firstFront = all.hits.findIndex((hit) => typeof hit.printed !== 'number')
+    assert.equal(firstFront, all.hits.length - 3, 'front-matter hits are the tail')
+  })
+
+  await step('math query L(V) uses compact mode with original-text snippets', async () => {
+    const result = await searchPdf(BOOK, 'L(V)', { limit: 5000 })
+    assert.equal(result.mode, 'compact')
+    assert.ok(result.pages > 0)
+    assert.ok(
+      result.hits.some((hit) => hit.pdf === 200),
+      'PDF page 200 contains ℒ (𝑉)',
+    )
+    assert.ok(
+      result.hits.some((hit) => hit.snippet.includes('ℒ (')),
+      'snippet is cut from the original extraction',
+    )
+  })
+
+  await step('hyphenation: complex also matches com- plex (pdf 140)', async () => {
+    const raw = await getPageText(BOOK, 140)
+    assert.ok(raw.includes('com- plex'))
+    const result = await searchPdf(BOOK, 'complex', { limit: 5000 })
+    const page140 = result.hits.filter((hit) => hit.pdf === 140)
+    assert.ok(page140.length > 0, 'pdf 140 is among the hits')
+    assert.ok(
+      page140.some((hit) => hit.snippet.includes('com- plex')),
+      'the snippet shows the original hyphenated text',
+    )
+    const literalCount = [...raw.matchAll(/complex/giu)].length
+    assert.equal(page140.length, literalCount + 1, 'the line-break occurrence is found too')
+  })
+
+  await step('hyphenation: diagonalized finds diag- onalized only when normalized', async () => {
+    const raw = await getPageText(BOOK, 16)
+    assert.ok(raw.includes('diag- onalized'))
+    assert.ok(!raw.includes('diagonalized'), 'the raw extraction has only the hyphenated form')
+    const result = await searchPdf(BOOK, 'diagonalized', { limit: 5000 })
+    assert.equal(result.mode, 'phrase')
+    assert.ok(result.hits.some((hit) => hit.pdf === 16))
+  })
+
+  await step('terms fallback: eigenvalue complex determinant', async () => {
+    const result = await searchPdf(BOOK, 'eigenvalue complex determinant', { limit: 30 })
+    assert.equal(result.mode, 'terms')
+    assert.ok(result.pages >= 1)
+    assert.ok(result.hits.length >= 1)
+    assert.equal(typeof result.hits[0].printed, 'number', 'body pages come first')
+  })
+
+  // -------------------------------------------------------------------------
   // Rendering
   // -------------------------------------------------------------------------
   const page344 = await step('renderPageToPng(344) at scale 2', async () => {
@@ -235,6 +387,8 @@ try {
       /crop must satisfy/,
     )
     await assert.rejects(searchPdf(BOOK, '   '), /query must be a non-empty string/)
+    await assert.rejects(searchPdf(BOOK, '""'), /query must be a non-empty string/)
+    await assert.rejects(searchPdf(BOOK, '---'), /query must be a non-empty string/)
     await assert.rejects(searchPdf(BOOK, 'x', { limit: 0 }), /limit must be a positive integer/)
   })
 

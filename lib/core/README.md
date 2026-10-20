@@ -39,7 +39,8 @@ export async function getInfo(path)
 
 export async function getPageText(path, pdfPage)      // -> string
 export async function searchPdf(path, query, opts)    // opts: {ignoreCase=true, limit=200, contextChars=80}
-// -> { hits: [{ pdf, printed, indexOnPage, snippet }], pages: <number of pages with hits> }
+// -> { hits: [{ pdf, printed, indexOnPage, snippet }], pages: <pages with hits>,
+//      mode: 'phrase' | 'compact' | 'terms' }
 export async function closePdf(path)                  // optional cache eviction -> boolean
 
 // lib/core/render.js
@@ -91,26 +92,44 @@ accepted). Invalid pages throw a `RangeError` with
 
 ### `searchPdf(path, query, opts)`
 
-Literal, substring search (the query is not a regex). Both the query and each
-page's text are whitespace-normalised; `ignoreCase` defaults to `true`.
-Matching is non-overlapping, page by page, with an `await` between pages so the
-event loop is not held for the whole book.
+Normalized text search (not a regex engine). The query is cleaned first: trimmed,
+a whole-query wrapper pair of `"…"`, `'…'`, `“…”`, `‘…’`, `` `…` `` or `$…$` is
+stripped, and whitespace is collapsed. Both the query and each page's text are
+then NFKC-normalized per code point (math alphanumerics and ligatures fold to
+ASCII), soft hyphens are removed, and all dash variants are deleted (with a
+following space when present), so `com- plex` matches `complex` and
+`finite-dimensional` matches `finite dimensional`.
 
-* `hits` are ordered by physical page, then position on the page.
-* `printed` is the printed label for that page (`273` for PDF page 293), or a
-  front-matter string / `null`.
-* `indexOnPage` is a UTF-16 offset into the **same normalised text** that
-  `getPageText()` returns for that page.
+Matching is tried over the whole document in order; the first pass with any hit
+decides the result and `mode`:
+
+1. `phrase` — literal match on the normalized text; `ignoreCase` defaults to
+   `true`.
+2. `compact` — only when no phrase matched: spaces are removed from both sides,
+   so `L(V)` finds `ℒ (𝑉)` and `T∈L(V)` finds `𝑆 , 𝑇 ∈ ℒ (𝑉)`.
+3. `terms` — only when neither matched: every letter/digit token of the query
+   (length ≥2, at most 8) must occur somewhere on the page (AND); at most one
+   hit per page.
+
+Hits rank **body pages first** (numeric `printed`) in page/offset order, then
+front matter (roman labels) in order, with at most 3 front-matter hits while the
+overall `limit` is applied. `pages` counts every matched page in the active pass
+before ranking/limit. `indexOnPage` is a UTF-16 offset into the original
+`getPageText()` text, and snippets are cut from that original text (surrogate
+pairs preserved).
+
 * `snippet` is at most about `2 * contextChars + query.length` characters, with
   leading/trailing `…` when the hit is mid-page.
-* `limit` caps the number of collected hits (default 200), but the scan
-  continues to the last page so `pages` always counts **all** pages with at
-  least one hit. LADR's `"singular value decomposition"`: 56 hits on 28 pages,
-  including PDF 293 / printed 273.
+* `limit` caps the returned hits (default 200); the scan continues to the last
+  page so `pages` is accurate.
 * `contextChars` defaults to 80.
+* The analysis above is one `await` per page, so the event loop stays responsive.
+  A 410-page phrase search takes roughly 0.8–1.1 s; a query that also runs the
+  fallbacks stays around the same order.
 
-An empty/whitespace-only query throws `TypeError`. Invalid `limit`/`contextChars`
-throw `RangeError`.
+An empty query after cleaning (including quotes or `---`) throws `TypeError`;
+queries longer than 1000 characters throw as well. Invalid
+`limit`/`contextChars` throw `RangeError`.
 
 ### `closePdf(path)`
 
@@ -193,7 +212,7 @@ particular ranged from ~0.67 s to ~1.18 s across runs).
 | First PDF call if only `pdf.js` was imported and neither canvas nor pdf.js was loaded yet | **~156 ms** |
 | Warm `getInfo` | **~0.05 ms** median |
 | `getPageText(344)` | **~28-50 ms** |
-| `searchPdf` over all 410 pages (`"singular value decomposition"`) | **~0.8 s** median; 0.67-1.18 s observed |
+| `searchPdf` over all 410 pages (`"singular value decomposition"`) | **~1.0 s** median; 0.83–1.1 s observed (phrase pass) |
 | `renderPageToPng(344, scale 2)` | **~26 ms** median warm (22-43 ms) |
 | `renderPagesToPng([344,345,346], scale 2)` | **~66 ms** median (63-77 ms) |
 | Cropped render (`0,0,1,0.55`, scale 2) | **~18-27 ms** |
@@ -247,10 +266,12 @@ in one session. Four cached books plus a long render session should stay in the
 7. **Scale and crop are validated, not clamped.** `scale` outside 1..3 throws;
    crop fractions outside the page throw. Validate in the tool schema too so
    the model gets a useful message.
-8. **Search is literal, not regex, and does not unfold hyphenation.** A word
-   split as `decom-\nposition` will not match `decomposition`. Whitespace and
-   case are normalized only. Search scans every page even after `limit` is hit
-   so `pages` is accurate; expect ~0.8 s for a 410-page book.
+8. **Search is normalized text matching, not regex.** Quotes/`$…$` are stripped,
+   NFKC folds math alphanumerics and ligatures, dashes are dropped (so line-break
+   hyphenation matches), then a space-insensitive pass and a keyword-AND pass are
+   tried only when the literal phrase has no hits (`mode` reports which one won).
+   Body pages rank before front matter and front-matter hits are capped at 3, so
+   `pages` can exceed `hits.length`. Expect ~1 s for a 410-page book.
 9. **Page labels come from the PDF, not from visible text.** Some books have
    duplicate/odd roman labels (LADR's PDF page 4 is labelled `ii` by pdf.js).
    Only numeric labels drive `printedOffset`; numeric deltas are taken by mode.

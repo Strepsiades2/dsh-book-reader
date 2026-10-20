@@ -48,15 +48,22 @@ tool caps at 200 regardless.
 
 ### `pdf_search({ path, query, ignore_case?, limit? })`
 
-Literal text-layer search. No images. Hits are locations, not evidence:
+Normalized text-layer search. No images. Hits are locations, not evidence:
 extracted math is unreliable.
+
+The query is cleaned (wrapping `"…"`, `'…'`, `“…”`, `‘…’`, `` `…` ``, `$…$`
+stripped; whitespace collapsed). Matching uses NFKC-normalized page text with all
+dash variants and line-break hyphenation removed, then falls back in order:
+`phrase` (literal, case-insensitive by default) → `compact` (spaces removed, so
+`L(V)` finds `ℒ (𝑉)`) → `terms` (every word must occur, AND). The returned
+`mode` says which pass won.
 
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `path` | string | — | Absolute `.pdf` path, or session-relative. |
-| `query` | string | — | Non-empty literal text. |
+| `query` | string | — | Non-empty text; wrapping quotes/backticks/`$…$` are stripped. |
 | `ignore_case` | boolean | `true` | Case-insensitive search. |
-| `limit` | integer | `20` | Maximum hits; clamped to `maxSearchResults`. |
+| `limit` | integer | `30` | Maximum hits; clamped to `maxSearchResults`. |
 
 Returns:
 
@@ -65,15 +72,18 @@ Returns:
   "path": "/abs/book.pdf",
   "query": "singular value decomposition",
   "pages": 28,                  // pages with at least one hit; may exceed hits.length
+  "mode": "phrase",             // "phrase" | "compact" | "terms"
   "hits": [
     { "pdf": 290, "printed": 270, "indexOnPage": 799, "snippet": "… 7E Singular Value Decomposition 270 …" }
   ]
 }
 ```
 
-`printed` may be a string (front-matter roman labels). `indexOnPage` is a
-UTF-16 offset into the whitespace-normalized page text and is omitted if the
-core does not provide it.
+Hits rank body pages (numeric `printed`) before front matter (roman labels) and
+return at most 3 front-matter hits; `pages` counts every matched page before the
+limit. `printed` may be a string (front-matter roman labels). `indexOnPage` is a
+UTF-16 offset into the original whitespace-normalized page text and is omitted if
+the core does not provide it.
 
 ### `pdf_read_pages({ path, pages, page_numbers?, scale?, crop?, image_quality?, include_text? })`
 
@@ -194,14 +204,18 @@ calls). The host adds `PDF_NOT_FILE`, `PDF_READER_INVALID_PATH`,
 ```jsonc
 {
   "ok": true,
+  "mode": "phrase",   // "phrase" | "compact" | "terms"
   "hits": [{ "pdf": 290, "printed": 270, "snippet": "…" }]
 }
 ```
 
-`ignoreCase` is true only for `1` or `true`; the default is case-sensitive.
-`limit` defaults to `maxSearchResults` (100) and is clamped to it; non-positive
-or non-integer values are rejected. A missing/empty `q` is `400 missing-query`.
-The response intentionally omits the core's `pages` count (the tool exposes it).
+`q` is cleaned like the tool (wrapping quotes/backticks/`$…$` are stripped).
+`ignoreCase` is true only for `1` or `true`; the route's default is
+case-sensitive (the tool defaults to case-insensitive). `limit` defaults to
+`maxSearchResults` (100) and is clamped to it; non-positive or non-integer values
+are rejected. A missing/empty `q` is `400 missing-query`. Hits use the same
+body-first ranking and modes as the tool; the response intentionally omits the
+core's `pages` count (the tool exposes it).
 
 ### `POST /dsh-pdf-reader/current`
 

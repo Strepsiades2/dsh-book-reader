@@ -1,6 +1,6 @@
 ---
 name: pdf-reader
-description: 'Read a PDF (book, paper, manual) cheaply and accurately with the dsh-book-reader tools: page map/TOC, literal full-text search, then selective page reads (text first, images only when typography matters). Use whenever the user asks about specific pages, a section, a theorem, a figure, or "this page" in a PDF.'
+description: 'Read a PDF (book, paper, manual) cheaply and accurately with the dsh-book-reader tools: page map/TOC, normalized text search (quote/LaTeX-tolerant, with hyphen/space and keyword fallbacks), then selective page reads (text first, images only when typography matters). Use whenever the user asks about specific pages, a section, a theorem, a figure, or "this page" in a PDF.'
 ---
 
 # Reading a PDF with `dsh-book-reader`
@@ -11,7 +11,7 @@ expense, not the first move.
 | Tool | Cost | Use for |
 | --- | --- | --- |
 | `pdf_info` | ~0 (text) | page count, printed↔physical offset, outline/TOC |
-| `pdf_search` | ~0 (text) | locating a phrase, theorem number, or figure caption |
+| `pdf_search` | ~0 (text) | locating a phrase, theorem number, or figure caption (quotes and `$…$` are stripped) |
 | `pdf_read_pages` + `include_image:false` | ~0 (text, per page) | prose, theorem statements, exercise text |
 | `pdf_read_pages` (images on) | **~350–1024 tokens/page** | formulas, diagrams, tables, layout |
 
@@ -19,7 +19,9 @@ expense, not the first move.
 
 1. `pdf_info` once per document → note `printedOffset` and the outline. Never
    hardcode an offset; it is detected (`printed = pdf − printedOffset`).
-2. `pdf_search` for a distinctive phrase → page numbers.
+2. `pdf_search` for a short, distinctive phrase → page numbers. If the result's
+   `mode` is not `"phrase"` (i.e. `"compact"` or `"terms"`), treat the hits as
+   candidate pages and read them before quoting exact wording.
 3. `pdf_read_pages` with **`include_image:false`** to read those pages as text.
 4. Only if the text is ambiguous or the question is about typography (a formula,
    a diagram, a table) → call again with images on, and crop.
@@ -82,7 +84,15 @@ needs it, and prefer `include_image:false` first.
 - `pdf_info` also reports `title`, `author`, `fileSizeBytes`, `pageSize` and
   `textCoverage` (`isLikelyScanned`). Check `textCoverage.isLikelyScanned`
   *before* searching: a scanned PDF has no text layer, so go straight to images.
-- Search is literal: it does not unfold hyphenation and is not a regex engine.
+- **`pdf_search` is normalized text search, not a regex engine.** Wrapping
+  quotes/backticks and `$…$` are stripped; NFKC folds math alphanumerics
+  (`ℒ (𝑉)`→`L (V)`) and ligatures; dash variants are dropped, so line-break
+  hyphenation (`com- plex`) matches `complex`. If no literal phrase matches, the
+  tool falls back to a space-insensitive pass (`mode: "compact"`, so `L(V)`
+  finds `ℒ (𝑉)`) and then to keyword AND (`mode: "terms"`). Body pages rank
+  before front matter (at most 3 front-matter hits), `pages` counts every matched
+  page before `limit`, and the default limit is 30. If a query finds nothing, try
+  one shorter distinctive word and read the pages rather than assuming absence.
 - Page numbers are 1-based; relative paths resolve against the session directory.
 - No annotation/note features: this plugin reads and renders only.
 
