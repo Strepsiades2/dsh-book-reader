@@ -16,8 +16,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - New config key `rememberView` (default `true`).
 - Host routes `GET /dsh-pdf-reader/view?path=…` and
   `POST /dsh-pdf-reader/view` for the browser half.
-- Docs: the README is split into a concise English `README.md` and a concise
-  Simplified Chinese `README.zh-CN.md`; they no longer share one page.
+- Docs: the README is split into an English `README.md` and a Simplified Chinese
+  `README.zh-CN.md`, both rewritten in a product-page style (badges, quick start,
+  feature table, model-tool examples, FAQ, data/privacy notes).
 
 ## [0.1.1] — 2026-10-18
 

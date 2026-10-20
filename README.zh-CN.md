@@ -1,36 +1,57 @@
 # dsh-book-reader
 
-给 DSH 官方 PDF 预览加一条读书工具栏，并给模型三个 PDF 工具。
+[![npm version](https://img.shields.io/npm/v/dsh-book-reader.svg)](https://www.npmjs.com/package/dsh-book-reader)
+[![license](https://img.shields.io/npm/l/dsh-book-reader.svg)](LICENSE)
+[![DSH](https://img.shields.io/badge/DSH-0.2.x-blue)](https://github.com/deepseek-ai/deepseek-harness)
+
+**在 DSH 里和模型一起读 PDF。** 官方 PDF 预览上加一条原生工具栏，并给模型三个工具：查目录、全文搜索、读指定页——公式和图表需要时还能直接看页面图片。
 
 [English](README.md)
 
+## 为什么用它
+
+- **原生，不替换。** 装饰 DSH 自己的 PDF 预览器，缩放、选中、刷新、Office→PDF 都保持原样；不额外装阅读器、不依赖侧边栏插件。
+- **模型真的能读这本书。** 三个工具给它页码/目录、字面全文搜索和页面内容；只有需要看公式、图表时才花图片 token。
+- **记住你读到哪。** 再次打开同一本书，自动回到上次的页码和缩放。
+
+## 三步上手
+
+1. DSH 的 **Plugins → Add plugin** → `dsh-book-reader`（或 `dsh plugin add dsh-book-reader`），重启 DSH。
+2. 在右侧栏打开任意 `.pdf`，预览头部出现工具栏。
+3. 直接问模型关于这本书的问题，它就能自己搜、自己读。
+
+可选——把阅读指南交给模型（成本、页码规则、常见坑）：
+
+```sh
+ln -sfn "<已安装的包目录>" "<workspace>/.dsh/skills/pdf-reader"
+```
+
 ## 功能
 
-**阅读工具栏** —— 只在右侧栏的 `.pdf` 预览上出现，不替换官方预览器。
+| | 功能 | 说明 |
+| --- | --- | --- |
+| 🧭 | 翻页与跳页 | 上一页/下一页、跟随滚动的页码读数、跳页框（印刷页码，或 `p152` 表示 PDF 第 152 页） |
+| 🔎 | 全文搜索 | `Cmd/Ctrl+Shift+F` 打开搜索；点结果跳页，或把该页引用插入对话框 |
+| 🤖 | AI 位置提示 | 每轮对话最多一行“你正在看第 N 页”，页码变了才发（`AI●` 开关） |
+| 💾 | 阅读记忆 | 按书记住页码和缩放，重新打开时恢复 |
+| 💬 | 悬停说明 | 每个控件都有悬停/聚焦提示，跟随 DSH 界面语言（中/英） |
+| 🧰 | 模型工具 | `pdf_info`、`pdf_search`、`pdf_read_pages`，见下 |
 
-- 上一页/下一页、跟随滚动的页码读数、跳页框（印刷页码，或 `p152` 表示 PDF 第 152 页）。
-- 全文搜索（`Cmd/Ctrl+Shift+F`）：点结果跳页，或把该页引用插入对话框。
-- AI 位置提示：每轮对话开始前，模型可能收到一行“你正在看第 N 页”的短提示（`AI●` 开关，默认开）。
-- **记住阅读位置**：再次打开同一本书时恢复上次的页码和缩放；状态按书保存在 DSH 侧，重启后仍有效。
-- 每个控件都有悬停/聚焦说明，跟随 DSH 界面语言（中文或英文）。
+## 模型工具
 
-**模型工具** —— 你问 PDF 内容时由模型调用。
+| 工具 | 用途 | 成本 |
+| --- | --- | --- |
+| `pdf_info` | 页数、印刷页↔物理页偏移、目录/TOC | 文本，几乎免费 |
+| `pdf_search` | 找短语、定理编号、图表标题 | 文本，几乎免费 |
+| `pdf_read_pages` | 读指定页的文本，可选返回页面图片 | 文本几乎免费；图片约 350–1024 token/页 |
 
-| 工具 | 作用 |
-| --- | --- |
-| `pdf_info` | 页数、印刷页↔物理页偏移、目录/TOC |
-| `pdf_search` | 字面全文搜索；返回页码和摘要 |
-| `pdf_read_pages` | 读取指定页的文本，也可返回页面图片 |
+可以这样问：
 
-## 安装
+> “这本书第 5 章讲了什么？” → `pdf_info` + `pdf_read_pages`
+> “找一下 singular value 出现在哪几页。” → `pdf_search`
+> “把定理 5.6 的公式截给我看。” → `pdf_read_pages` 带图片
 
-1. DSH 的 **Plugins → Add plugin** 输入 `dsh-book-reader`（或命令行 `dsh plugin add dsh-book-reader`）。
-2. 安装或升级后重启 DSH。
-3. 可选：把 skill 软链到工作区，让模型拿到阅读流程说明：
-
-   ```sh
-   ln -sfn "<已安装的包目录>" "<workspace>/.dsh/skills/pdf-reader"
-   ```
+什么时候用文本、什么时候值得花图片 token，由模型自己判断。
 
 ## 配置
 
@@ -38,17 +59,29 @@
 
 - `rememberView`（默认 `true`）—— 按书记住页码/缩放。
 - `maxPagesPerCall`（默认 `4`）—— 单次读页上限。
-- `defaultScale`（默认 `2.5`）—— 图片渲染倍率。
+- `defaultScale`（默认 `2.5`）—— 图片渲染倍率（约 180 DPI）。
 - `autoShare`（默认 `true`）—— AI 位置提示。
 
 完整键和默认值见 [`cordis.patch.yml`](cordis.patch.yml) 注释。
 
+## 常见问题
+
+**看不到工具栏？** 只有 `.pdf` 预览会挂工具栏（`.docx`/`.pptx`/图片不会）。升级/重装插件后重启 DSH。
+
+**模型不知道我在哪一页？** 位置提示每轮最多一次、页码变了才发；打开 `AI●`，或直接在消息里提页码/插入搜索结果引用。
+
+**扫描件？** 没有文本层：搜索为空、文本读页为空；页面图片仍然可用，先用 `pdf_info` 的 `textCoverage.isLikelyScanned` 判断。
+
+**会改我的 PDF 吗？** 不会。只读取和渲染，不会往书目录写任何东西。
+
+**记住的状态存哪？** DSH 数据目录下的 `~/.dsh/storages/book_reader_views.json`，按文件路径索引，最多保留 500 本。
+
+**DSH 升级后工具栏失效？** 工具栏依赖预览器的私有 DOM 标记；即使失效，模型工具仍然可用。
+
 ## 说明
 
-- 只支持官方 PDF 预览；工具栏依赖该预览的私有 DOM 标记，DSH 升级可能影响行为。
-- 工具默认只在会话工作区内读取（可设 `allowOutsideWorkspace`）；本地 HTTP 路由只认回环地址、无鉴权。
-- 扫描件没有文本层，只能看图（没有 OCR）。
-- `pdfjs-dist` 锁定 `6.3.289`，以和宿主进程一致。
+- 本地 HTTP 路由只认回环地址、无鉴权；模型工具默认只在会话工作区内读取（可设 `allowOutsideWorkspace`）。
+- `pdfjs-dist` 锁定 `6.3.289`，与 DSH 宿主进程保持一致。
 
 ## 更多
 

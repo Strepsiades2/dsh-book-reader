@@ -1,54 +1,87 @@
 # dsh-book-reader
 
-A reading toolbar for DSH's official PDF preview, plus three PDF tools the model can use.
+[![npm version](https://img.shields.io/npm/v/dsh-book-reader.svg)](https://www.npmjs.com/package/dsh-book-reader)
+[![license](https://img.shields.io/npm/l/dsh-book-reader.svg)](LICENSE)
+[![DSH](https://img.shields.io/badge/DSH-0.2.x-blue)](https://github.com/deepseek-ai/deepseek-harness)
+
+**Read PDFs in DSH together with the model.** A native toolbar on the official PDF preview, plus three tools the model can use to look up the TOC, search the full text, and read pages — page images included, when a formula or diagram needs to be seen.
 
 [中文说明](README.zh-CN.md)
 
+## Why this one
+
+- **Native, not a replacement.** It decorates DSH's own PDF preview, so zoom, text selection, reload, and Office→PDF keep working. No extra viewer, no sidebar dependency.
+- **The model can actually read the book.** Three tools give it the page map, literal full-text search, and page content, with page images only when needed.
+- **It remembers where you were.** Reopening a book restores the last page and zoom.
+
+## Quick start
+
+1. DSH **Plugins → Add plugin** → `dsh-book-reader` (or `dsh plugin add dsh-book-reader`). Restart DSH.
+2. Open any `.pdf` in the right sidebar — the toolbar appears in the preview header.
+3. Ask the model about the PDF; it can search and read from now on.
+
+Optional — give the model the reading guide (costs, page numbering, pitfalls):
+
+```sh
+ln -sfn "<installed package dir>" "<workspace>/.dsh/skills/pdf-reader"
+```
+
 ## Features
 
-**Reading toolbar** — only on `.pdf` previews in the right sidebar; the stock previewer is untouched.
+| | Feature | What it does |
+| --- | --- | --- |
+| 🧭 | Navigation | Previous/next page, page readout, jump box (printed page, or `p152` for PDF page 152) |
+| 🔎 | Search | Full-text search (`Cmd/Ctrl+Shift+F`); jump to a hit or insert its reference into the chat |
+| 🤖 | AI position hint | One short “you are reading page N” line per turn, only when the page changed (`AI●` toggle) |
+| 💾 | Reading memory | Remembers page and zoom per book; restores them when you reopen it |
+| 💬 | Tooltips | Hover/focus explanations on every control, English or Chinese |
+| 🧰 | Model tools | `pdf_info`, `pdf_search`, `pdf_read_pages` — see below |
 
-- Previous/next page, a current-page readout, and a jump box (printed page numbers, or `p152` for PDF page 152).
-- Full-text search with `Cmd/Ctrl+Shift+F`; click a result to jump, or insert its page reference into the chat.
-- AI position hint: before each turn the model may receive one short “you are reading page N” line (the `AI●` toggle, on by default).
-- **Remembers your place**: reopening a book restores the last page and zoom. State is stored by DSH per book and survives restarts.
-- Hover/focus explanations on every control, in English or Chinese.
+## Model tools
 
-**Model tools** — the model calls them when you ask about a PDF.
+| Tool | Use it for | Cost |
+| --- | --- | --- |
+| `pdf_info` | Page count, printed↔physical page offset, outline/TOC | text, ~free |
+| `pdf_search` | Finding a phrase, theorem number, or figure caption | text, ~free |
+| `pdf_read_pages` | Reading chosen pages as text, optionally with page images | text ~free; images ~350–1024 tokens/page |
 
-| Tool | What it does |
-| --- | --- |
-| `pdf_info` | Page count, printed↔physical page offset, outline/TOC |
-| `pdf_search` | Literal full-text search; page numbers and snippets |
-| `pdf_read_pages` | Reads chosen pages as text, optionally with page images |
+Example prompts:
 
-## Install
+> “What does chapter 5 of this book cover?” → `pdf_info` + `pdf_read_pages`
+> “Find where ‘singular value’ appears.” → `pdf_search`
+> “Show me the formula in theorem 5.6.” → `pdf_read_pages` with images
 
-1. **Plugins → Add plugin** in DSH and enter `dsh-book-reader` (or run `dsh plugin add dsh-book-reader`).
-2. Restart DSH after installing or upgrading.
-3. Optional: give the model the reading guide by linking the skill into your workspace:
-
-   ```sh
-   ln -sfn "<installed package dir>" "<workspace>/.dsh/skills/pdf-reader"
-   ```
+The model decides when text is enough and when an image is worth it.
 
 ## Configuration
 
-All keys are optional and the defaults are safe. Common ones:
+Every key is optional and the defaults are safe. Common ones:
 
 - `rememberView` (default `true`) — remember page/zoom per book.
-- `maxPagesPerCall` (default `4`) — page cap for `pdf_read_pages`.
-- `defaultScale` (default `2.5`) — image render scale.
+- `maxPagesPerCall` (default `4`) — page cap per read call.
+- `defaultScale` (default `2.5`) — image render scale (~180 DPI).
 - `autoShare` (default `true`) — the AI position hint.
 
 The full list with defaults is in [`cordis.patch.yml`](cordis.patch.yml).
 
+## FAQ
+
+**The toolbar does not appear.** Only `.pdf` previews get it (not `.docx`/`.pptx`/images). Update/reinstall the plugin and restart DSH.
+
+**The model does not know my page.** The hint is sent at most once per turn and only when the page changed; turn on `AI●`, or mention the page/quote a search result.
+
+**Scanned PDFs.** No text layer: search finds nothing and text reads are empty. Page images still work — check `textCoverage.isLikelyScanned` from `pdf_info`.
+
+**Does it modify my PDF?** No. It only reads and renders; nothing is written next to your books.
+
+**Where is the remembered state?** In DSH's data directory (`~/.dsh/storages/book_reader_views.json`), at most 500 books, keyed by file path.
+
+**A DSH upgrade broke the toolbar.** The toolbar relies on the preview's private DOM markers; page tools keep working regardless.
+
 ## Notes
 
-- Only the official PDF preview is supported; the toolbar relies on that preview's private DOM markers, so a DSH upgrade may change behavior.
-- Tools read only inside the session workspace unless `allowOutsideWorkspace` is set; the local HTTP routes are loopback-only and unauthenticated.
-- Scanned PDFs have no text layer — page images are the only option (no OCR).
-- `pdfjs-dist` is pinned to `6.3.289` to match the host process.
+- Local HTTP routes are loopback-only and unauthenticated; model tools stay inside the session workspace by default (`allowOutsideWorkspace` opts out).
+- `pdfjs-dist` is pinned to `6.3.289` to match the DSH host process.
 
 ## More
 
