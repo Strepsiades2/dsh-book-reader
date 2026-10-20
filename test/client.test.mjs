@@ -984,6 +984,7 @@ const restoreGets = []
 const restorePosts = []
 const restoreCurrent = []
 const restoreWheels = []
+const restoreScrollAtWheel = []
 let releaseView
 const heldView = new Promise((resolve) => { releaseView = resolve })
 const savedView = {
@@ -1024,6 +1025,7 @@ const applyZoomWheel = (event) => {
     deltaY: event.deltaY,
     deltaMode: event.deltaMode,
   })
+  restoreScrollAtWheel.push(scroll.top)
   const current = Number.parseFloat(zoomFrame.style.getPropertyValue('--document-zoom')) || 1
   const next = Math.min(4, Math.max(0.25, current * Math.exp(-event.deltaY * 0.01)))
   zoomFrame.style.setProperty('--document-zoom', String(next))
@@ -1066,6 +1068,11 @@ assert.equal(restoreWheels[0].ctrlKey, true, 'the wheel gesture looks like a Ctr
 assert.ok(Number.isFinite(restoreWheels[0].deltaY))
 assert.ok(restoreWheels[0].deltaY < 0, 'the saved 1.5x needs zooming in')
 assert.equal(restoreWheels[0].deltaMode, 0)
+assert.ok(
+  restoreScrollAtWheel.length > 0
+    && restoreScrollAtWheel.every((top) => Math.abs(top - 1192) < 1),
+  'the saved page is placed before zoom gestures replay, so the cover never flashes',
+)
 assert.equal(restorePosts.length, 0, 'no save while the restore is still placing the page')
 
 await actWait(1000)

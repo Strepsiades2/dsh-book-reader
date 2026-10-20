@@ -14,6 +14,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The search result list, its snippets, and the per-result “→ AI” insertion are
   gone; search no longer inserts anything into the composer.
 
+### Fixed
+
+- Opening a book now jumps to the remembered page immediately, before a saved
+  fixed zoom is replayed, so the cover no longer flashes for a few hundred
+  milliseconds while the zoom settles. The scroll is re-applied after the zoom
+  commit so the page stays aligned.
+
 ## [0.2.0] — 2026-10-20
 
 ### Added

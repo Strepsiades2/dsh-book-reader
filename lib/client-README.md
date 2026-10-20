@@ -98,21 +98,23 @@ byte-view scroll is explicitly not restored. The plugin owns this state:
 
 - On mount the contribution `GET`s `/dsh-pdf-reader/view?path=…` in parallel
   with rendering, waits (up to about 8 s) for the preview pane and the saved
-  page element, scrolls that page into view with `scrollPageIntoView`, and
-  re-applies the scroll once after 300 ms so lazily rendered pages cannot leave
-  the view offset.
-- Fixed zoom is restored through the preview's own gesture path: its native
-  `wheel` listener on `[data-document-zoom-scrollport]` reacts to `ctrlKey` with
-  `scale * exp(-deltaY * 0.01)` (deltaY clamped to ±40) and commits a fixed
-  preference 120 ms after the last event. The plugin dispatches synthetic
-  `WheelEvent`s with `deltaY = -100·ln(target/current)` until the frame's inline
-  `--document-zoom` is within 2%, then waits for that settle commit. `fit-width`
-  is the preview's default mode and needs no restoration.
-- Saving is gated until the restore finishes (success or failure), so opening a
-  book cannot overwrite its saved page with page 1. Page samples and frame
-  attribute changes (`style`, `data-document-zoom-mode`) feed one 500 ms
-  debounce that `POST`s `{ path, pdfPage, zoomMode, zoomScale }`; the Host stamps
-  `updatedAt`.
+  page element, and **scrolls that page into view immediately** with
+  `scrollPageIntoView` — before any zoom replay — so the cover does not flash
+  while a fixed zoom is being restored. The scroll is re-applied once after
+  300 ms so lazily rendered pages cannot leave the view offset.
+- Fixed zoom is restored afterwards through the preview's own gesture path: its
+  native `wheel` listener on `[data-document-zoom-scrollport]` reacts to
+  `ctrlKey` with `scale * exp(-deltaY * 0.01)` (deltaY clamped to ±40) and
+  commits a fixed preference 120 ms after the last event. The plugin dispatches
+  synthetic `WheelEvent`s with `deltaY = -100·ln(target/current)` until the
+  frame's inline `--document-zoom` is within 2%, waits for that settle commit,
+  then scrolls the saved page again because the zoom reflowed every page.
+  `fit-width` is the preview's default mode and needs no restoration.
+- Saving is gated until the page is placed (and, for a fixed zoom, until the
+  zoom settles) so opening a book cannot overwrite its saved page with page 1.
+  Page samples and frame attribute changes (`style`,
+  `data-document-zoom-mode`) feed one 500 ms debounce that `POST`s
+  `{ path, pdfPage, zoomMode, zoomScale }`; the Host stamps `updatedAt`.
 - Everything degrades silently when a marker, the route, or the storage service
   is missing. The last ~500 ms before unmount can be lost because the effect
   deliberately has no flush-on-unmount.
