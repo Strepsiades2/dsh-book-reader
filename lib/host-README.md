@@ -427,8 +427,11 @@ YAML example:
   auto-share hint falls back to the physical PDF page (`page_numbers: "pdf"`)
   while still naming the printed label in prose.
 - **The image path needs an image-capable route and an attachment store.** The
-  tool is not registered without `ctx.attachments`, and each call refuses before
-  rendering when the routed model does not declare image input.
+  tool is registered only while `ctx.attachments` is mounted, and an
+  `include_image:true` call refuses before rendering when the routed model does
+  not declare image input. A text-only call (`include_image:false`) needs
+  neither the attachment store nor image input and works as long as the tool is
+  registered.
 - **Remembered view state needs the storage domain.** Without `ctx.storageDomain`
   (or when its backend rejects the open), the browser half's GETs answer
   `view: null` and its POSTs answer `503`; page/zoom memory is simply off. The

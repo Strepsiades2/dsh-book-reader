@@ -32,6 +32,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fixed zoom is replayed, so the cover no longer flashes for a few hundred
   milliseconds while the zoom settles. The scroll is re-applied after the zoom
   commit so the page stays aligned.
+- `pdf_read_pages` no longer disappears from the model's tool list: its output
+  schema used a property-level `required: false`, which DSH's `defineTool`
+  rejects at registration time. The exception only reached the Host log, so the
+  plugin looked enabled with two tools instead of three.
+- Text-only `pdf_read_pages` calls (`include_image:false`) no longer crash while
+  rendering their output, and they no longer require an image-capable model
+  route or the attachment store; image reads still require both.
 
 ## [0.2.0] — 2026-10-20
 
