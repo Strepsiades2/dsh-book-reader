@@ -1714,6 +1714,49 @@ await test('pdf_read_pages maps attachment size failures to a crop/downscale hin
   )
 })
 
+await test('every tool schema uses required:true only (no required:false)', () => {
+  // DSH's JsonSchema dialect rejects a property-level `required: false` at
+  // defineTool time. That rejection happens inside the attachments injection
+  // callback, so pdf_read_pages silently disappears while the other two tools
+  // keep working. Walk every schema and fail loudly instead.
+  const assertRequiredMarkers = (node, path) => {
+    if (node === null || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      node.forEach((entry, index) => assertRequiredMarkers(entry, `${path}[${index}]`))
+      return
+    }
+    if (Object.prototype.hasOwnProperty.call(node, 'required')) {
+      assert.equal(
+        node.required,
+        true,
+        `${path}.required must be true when present; omit it for an optional property`,
+      )
+    }
+    for (const [key, value] of Object.entries(node)) {
+      assertRequiredMarkers(value, `${path}.${key}`)
+    }
+  }
+  const config = host.normalizeConfig({})
+  const defineTool = (definition) => definition
+  const infoCache = host.createInfoCache({ getInfo: async () => INFO, statFile: async () => PDF_STAT })
+  const tools = [
+    ...host.createCheapTools({ defineTool, config, core: {}, infoCache, statFile: async () => PDF_STAT }),
+    host.createReadPagesTool({
+      defineTool,
+      ctx: {},
+      config,
+      core: {},
+      infoCache,
+      statFile: async () => PDF_STAT,
+    }),
+  ]
+  assert.deepEqual(tools.map((tool) => tool.name), ['pdf_info', 'pdf_search', 'pdf_read_pages'])
+  for (const tool of tools) {
+    assertRequiredMarkers(tool.parameters, `${tool.name}.parameters`)
+    assertRequiredMarkers(tool.output?.schema, `${tool.name}.output`)
+  }
+})
+
 await test('pdf_search strips query wrappers, defaults limit 30, and reports mode', async () => {
   const calls = []
   const core = {
