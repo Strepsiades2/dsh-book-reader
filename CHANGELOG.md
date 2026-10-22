@@ -36,6 +36,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   schema used a property-level `required: false`, which DSH's `defineTool`
   rejects at registration time. The exception only reached the Host log, so the
   plugin looked enabled with two tools instead of three.
+
+## [0.3.1] — 2026-10-22
+
+### Fixed
+
 - Text-only `pdf_read_pages` calls (`include_image:false`) no longer crash while
   rendering their output, and they no longer require an image-capable model
   route or the attachment store; image reads still require both.
@@ -108,6 +113,7 @@ First public release.
 - `pdfjs-dist` is pinned to `6.3.289` to match the host process.
 - MIT licensed.
 
+[0.3.1]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.2.0
 [0.1.1]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.1.1
