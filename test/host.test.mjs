@@ -1593,6 +1593,73 @@ await test('pdf_read_pages renders printed pages, saves attachments, and emits i
   assert.equal(blocks[4].type, 'image')
 })
 
+await test('pdf_read_pages include_image:false renders text only and never saves or renders', async () => {
+  const tool = host.createReadPagesTool({
+    defineTool: (definition) => definition,
+    ctx: makeToolContext({
+      attachments: {
+        async saveImage() {
+          assert.fail('text-only reads must not save attachments')
+        },
+      },
+    }),
+    config: host.normalizeConfig({}),
+    core: {
+      async renderPagesToPng() {
+        assert.fail('text-only reads must not render pages')
+      },
+      async getPageText(path, pdf) {
+        assert.equal(path, PDF)
+        return `Text for PDF page ${pdf}`
+      },
+    },
+    infoCache: host.createInfoCache({ getInfo: async () => INFO, statFile: async () => PDF_STAT }),
+    statFile: async () => PDF_STAT,
+  })
+
+  const value = await tool.execute(
+    { path: PDF, pages: '15', include_image: false },
+    makeExec(),
+  )
+  assert.equal(value.textIncluded, true)
+  assert.equal(value.imageTokens, 0)
+  assert.deepEqual(value.pages.map((page) => page.pdf), [35])
+  assert.equal(value.pages[0].printed, 15)
+  assert.equal(value.pages[0].image, undefined)
+  assert.equal(value.pages[0].text, 'Text for PDF page 35')
+
+  const blocks = tool.output.render({ include_image: false }, value)
+  assert.equal(blocks[0].type, 'text')
+  assert.equal(blocks.length, 2, 'summary plus one text page, no image block')
+  assert.ok(blocks.every((block) => block.type === 'text'))
+  assert.match(blocks[1].text, /<page pdf="35" printed="15">/u)
+  assert.match(blocks[1].text, /Text for PDF page 35/u)
+})
+
+await test('pdf_read_pages include_image:false works without attachments or an image-capable model', async () => {
+  const tool = host.createReadPagesTool({
+    defineTool: (definition) => definition,
+    // No attachment service and a text-only route: a text read must still work.
+    ctx: makeToolContext({ attachments: undefined, modalities: ['text'] }),
+    config: host.normalizeConfig({}),
+    core: {
+      async renderPagesToPng() {
+        assert.fail('text-only reads must not render pages')
+      },
+      async getPageText(path, pdf) {
+        return `Plain text for ${pdf}`
+      },
+    },
+    infoCache: host.createInfoCache({ getInfo: async () => INFO, statFile: async () => PDF_STAT }),
+    statFile: async () => PDF_STAT,
+  })
+
+  const value = await tool.execute({ path: PDF, pages: '16', include_image: false }, makeExec())
+  assert.deepEqual(value.pages.map((page) => page.pdf), [36])
+  assert.equal(value.pages[0].text, 'Plain text for 36')
+  assert.doesNotThrow(() => tool.output.render({ include_image: false }, value))
+})
+
 await test('pdf_read_pages maps image_quality:cheap to 1.5x and otherwise uses the 2.5x default', async () => {
   const calls = []
   const build = () =>
