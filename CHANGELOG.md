@@ -37,6 +37,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rejects at registration time. The exception only reached the Host log, so the
   plugin looked enabled with two tools instead of three.
 
+## [0.3.2] — 2026-10-23
+
+### Fixed
+
+- `pdf_read_pages` is now registered synchronously with the other two tools
+  instead of waiting for the `attachments` injection. The later registration
+  made DSH announce `已添加工具：pdf_read_pages` at the start of every chat;
+  image calls still resolve the attachment store lazily, and text-only calls
+  never need it.
+
 ## [0.3.1] — 2026-10-22
 
 ### Fixed
@@ -113,6 +123,7 @@ First public release.
 - `pdfjs-dist` is pinned to `6.3.289` to match the host process.
 - MIT licensed.
 
+[0.3.2]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.3.2
 [0.3.1]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.2.0

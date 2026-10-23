@@ -12,10 +12,11 @@ The host half is plain hand-written ESM. There is no bundler step for
 
 ## Model tools
 
-All three tools are registered through `defineTool` from `@deepseek-ai/dsh-tools`.
-`pdf_read_pages` is registered only while `ctx.attachments` is mounted, because
-it persists PNGs as durable image attachments. Page numbers accepted by tools
-are **1-based**.
+All three tools are registered through `defineTool` from `@deepseek-ai/dsh-tools`
+**synchronously in `apply`**, so a Session's first tool list already contains
+all three. `pdf_read_pages` resolves `ctx.attachments` lazily only when an image
+call needs it; text-only calls do not. Page numbers accepted by tools are
+**1-based**.
 
 ### `pdf_info({ path })`
 
@@ -427,11 +428,10 @@ YAML example:
   auto-share hint falls back to the physical PDF page (`page_numbers: "pdf"`)
   while still naming the printed label in prose.
 - **The image path needs an image-capable route and an attachment store.** The
-  tool is registered only while `ctx.attachments` is mounted, and an
-  `include_image:true` call refuses before rendering when the routed model does
-  not declare image input. A text-only call (`include_image:false`) needs
-  neither the attachment store nor image input and works as long as the tool is
-  registered.
+  tool itself is always registered; an `include_image:true` call refuses before
+  rendering when the route does not declare image input or
+  `ctx.get('attachments')` is undefined. A text-only call
+  (`include_image:false`) needs neither the attachment store nor image input.
 - **Remembered view state needs the storage domain.** Without `ctx.storageDomain`
   (or when its backend rejects the open), the browser half's GETs answer
   `view: null` and its POSTs answer `503`; page/zoom memory is simply off. The
@@ -448,14 +448,15 @@ YAML example:
 
 ## Wiring and verification
 
-`apply(ctx)` requires the `tools`, `webServer`, and `agents` services. The image
-tool is registered inside `ctx.inject(['attachments'], …)`. Remembered page/zoom
-opens the `book_reader_views` domain inside `ctx.inject(['storageDomain'], …)`
-when `rememberView` is on; both injections are optional and their absence only
-disables the corresponding feature. The core is loaded lazily from
-`./core/pdf.js` and `./core/render.js`; a missing core produces a clear
-`PDF core is unavailable` / `PDF renderer is unavailable` tool error and a 500
-on the routes instead of a silent fallback.
+`apply(ctx)` requires the `tools`, `webServer`, and `agents` services. All three
+tools register synchronously; `pdf_read_pages` only reaches for
+`ctx.attachments` inside an image call. Remembered page/zoom opens the
+`book_reader_views` domain inside `ctx.inject(['storageDomain'], …)` when
+`rememberView` is on; that injection is optional and its absence only disables
+page/zoom memory. The core is loaded lazily from `./core/pdf.js` and
+`./core/render.js`; a missing core produces a clear `PDF core is unavailable` /
+`PDF renderer is unavailable` tool error and a 500 on the routes instead of a
+silent fallback.
 
 Plain-`node` tests (no harness, no core required):
 

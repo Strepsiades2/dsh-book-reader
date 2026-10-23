@@ -1488,7 +1488,7 @@ await test('apply registers two cheap tools, one image tool, one route, and the 
   const fixture = makeApplyContext()
   host.apply(fixture.ctx, {})
   assert.deepEqual(fixture.tools.map((tool) => tool.name), ['pdf_info', 'pdf_search', 'pdf_read_pages'])
-  assert.equal(fixture.injections, 2, 'attachments and storageDomain injections')
+  assert.equal(fixture.injections, 1, 'only the storageDomain injection remains')
   assert.equal(fixture.routes.length, 1)
   assert.equal(fixture.routes[0].kind, 'prefix')
   assert.equal(fixture.routes[0].path, '/dsh-pdf-reader')
@@ -1497,17 +1497,41 @@ await test('apply registers two cheap tools, one image tool, one route, and the 
   assert.equal(fixture.listeners[0].options.prepend, true)
 })
 
+await test('pdf_read_pages is registered synchronously, without waiting for attachments', () => {
+  const tools = []
+  let injections = 0
+  const ctx = {
+    tools: { register: (definition) => tools.push(definition) },
+    webServer: { register: () => () => {} },
+    effect: (factory) => {
+      factory()
+      return () => {}
+    },
+    on: () => () => {},
+    // The injection callback is deliberately never invoked: pdf_read_pages must
+    // still be in the session's first tool list.
+    inject: () => {
+      injections += 1
+      return () => {}
+    },
+    get: () => undefined,
+  }
+  host.apply(ctx, {})
+  assert.deepEqual(tools.map((tool) => tool.name), ['pdf_info', 'pdf_search', 'pdf_read_pages'])
+  assert.equal(injections, 1, 'only the remembered-view storageDomain injection is pending')
+})
+
 await test('apply honors autoShare:false, rememberView:false, and enabled:false', () => {
   const noShare = makeApplyContext()
   host.apply(noShare.ctx, { autoShare: false })
   assert.equal(noShare.tools.length, 3)
   assert.equal(noShare.listeners.length, 0)
-  assert.equal(noShare.injections, 2)
+  assert.equal(noShare.injections, 1)
 
   const noView = makeApplyContext()
   host.apply(noView.ctx, { rememberView: false })
   assert.equal(noView.tools.length, 3)
-  assert.equal(noView.injections, 1, 'rememberView:false skips the storage domain')
+  assert.equal(noView.injections, 0, 'rememberView:false skips the storage domain')
 
   const disabled = makeApplyContext()
   host.apply(disabled.ctx, { enabled: false })

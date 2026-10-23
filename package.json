@@ -1,6 +1,6 @@
 {
   "name": "dsh-book-reader",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Read books and papers in DSH: a reading toolbar on the official PDF preview that remembers your page and zoom, plus PDF tools for the model (page map, full-text search, page text and images).",
   "keywords": [
     "dsh",
