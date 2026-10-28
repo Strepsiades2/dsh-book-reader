@@ -49,8 +49,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Page geometry is no longer measured while the preview is scrolling. The
   O(410) rect pass used to run on every lazy page render (ResizeObserver),
   forcing a full preview layout against PDF.js and leaving a grey placeholder
-  for seconds at high zoom on Retina displays. Measurements now run ~220 ms
-  after scrolling stops and page wrappers are cached between passes.
+  for seconds at high zoom on Retina displays. Measurements now run ~260 ms
+  after scrolling stops, are skipped entirely while the saved page/zoom restore
+  is in flight, and page wrappers are cached between passes.
 
 ## [0.3.1] — 2026-10-22
 
