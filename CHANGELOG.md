@@ -46,6 +46,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   made DSH announce `已添加工具：pdf_read_pages` at the start of every chat;
   image calls still resolve the attachment store lazily, and text-only calls
   never need it.
+- Page geometry is no longer measured while the preview is scrolling. The
+  O(410) rect pass used to run on every lazy page render (ResizeObserver),
+  forcing a full preview layout against PDF.js and leaving a grey placeholder
+  for seconds at high zoom on Retina displays. Measurements now run ~220 ms
+  after scrolling stops and page wrappers are cached between passes.
 
 ## [0.3.1] — 2026-10-22
 

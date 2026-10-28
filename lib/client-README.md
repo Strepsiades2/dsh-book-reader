@@ -170,9 +170,13 @@ build and could be renamed by an upgrade.
 - Scroll handling is one `requestAnimationFrame` callback and a **binary search**
   over cached page tops — O(log n), no DOM reads per scroll event.
 - Geometry is measured O(n) only when layout changes (mount, resize/zoom,
-  visibility change, page render that changes the page-section height), coalesced
-  by a 120 ms debounce. A structural observer watches for a replaced preview
-  body/scrollport, not for every lazy canvas.
+  visibility change), coalesced by a 120 ms debounce, and **never while the
+  scrollport is scrolling**: the measurement is deferred until ~220 ms after the
+  last scroll event. Measuring 410 wrappers during lazy page rendering forced a
+  full preview layout against PDF.js and could delay a high-DPR page's canvas
+  paint by seconds; page wrappers are cached between passes. A structural
+  observer watches for a replaced preview body/scrollport, not for every lazy
+  canvas.
 - Search hits are capped at 100 by the Host; highlight rebuilding is debounced
   (60 ms) and only touches pages that have hits.
 
