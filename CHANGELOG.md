@@ -52,6 +52,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   for seconds at high zoom on Retina displays. Measurements now run ~260 ms
   after scrolling stops, are skipped entirely while the saved page/zoom restore
   is in flight, and page wrappers are cached between passes.
+- PDF text and metadata are now returned as well-formed Unicode. Some pages'
+  fonts make PDF.js emit an unpaired UTF-16 surrogate (for example `U+D835`);
+  that string is valid JSON but invalid for the model API, and a single such
+  tool result in a Session log made every later DeepSeek Messages request fail
+  with `400 INVALID_REQUEST`. Unpaired surrogates are replaced with `U+FFFD`
+  (length-preserving, so search offsets stay aligned).
 
 ## [0.3.1] — 2026-10-22
 

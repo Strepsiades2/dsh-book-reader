@@ -157,6 +157,20 @@ try {
     assert.equal(text, text.replace(/\s+/g, ' ').trim(), 'whitespace is normalised')
   })
 
+  await step('text and outline stay well-formed Unicode (no lone surrogates)', async () => {
+    // PDF.js emits a lone U+D835 from this book's math fonts. A lone surrogate
+    // in one tool result made every later DeepSeek Messages request fail 400.
+    const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+    for (const pdf of [26, 27]) {
+      const text = await getPageText(BOOK, pdf)
+      assert.equal(loneSurrogate.test(text), false, `PDF page ${pdf} text is well formed`)
+    }
+    const info = await getInfo(BOOK)
+    for (const entry of info.outline) {
+      assert.equal(loneSurrogate.test(entry.title), false, `outline title is well formed: ${entry.title}`)
+    }
+  })
+
   const search = await step('searchPdf("singular value decomposition")', async () => {
     const result = await searchPdf(BOOK, 'singular value decomposition')
     assert.ok(result.hits.length > 0)

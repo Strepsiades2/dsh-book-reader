@@ -115,8 +115,14 @@ Hits rank **body pages first** (numeric `printed`) in page/offset order, then
 front matter (roman labels) in order, with at most 3 front-matter hits while the
 overall `limit` is applied. `pages` counts every matched page in the active pass
 before ranking/limit. `indexOnPage` is a UTF-16 offset into the original
-`getPageText()` text, and snippets are cut from that original text (surrogate
-pairs preserved).
+`getPageText()` text, and snippets are cut from that original text.
+
+All returned text and metadata is **well-formed Unicode**. PDF.js can emit an
+unpaired UTF-16 surrogate from a broken font `ToUnicode` map (for example
+`U+D835` in LADR's math fonts); such strings are valid JSON but invalid for a
+model API and one tool result containing one made every later DeepSeek Messages
+request fail with `400 INVALID_REQUEST`. Unpaired surrogates are replaced with
+`U+FFFD` (one code unit, so search offsets stay aligned).
 
 * `snippet` is at most about `2 * contextChars + query.length` characters, with
   leading/trailing `…` when the hit is mid-page.
