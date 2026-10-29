@@ -37,6 +37,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rejects at registration time. The exception only reached the Host log, so the
   plugin looked enabled with two tools instead of three.
 
+## [0.3.3] — 2026-10-29
+
+### Fixed
+
+- Page geometry is no longer measured while the PDF preview is scrolling. The
+  O(410) rect pass used to run on every lazy page render (ResizeObserver),
+  forcing a full preview layout against PDF.js and leaving a grey placeholder
+  for seconds at high zoom on Retina displays. Measurements now run ~260 ms
+  after scrolling stops, are skipped entirely while the saved page/zoom restore
+  is in flight, and page wrappers are cached between passes.
+- PDF text, search snippets, outline titles and document metadata are now
+  returned as well-formed Unicode. Some pages' fonts make PDF.js emit an
+  unpaired UTF-16 surrogate (for example `U+D835`); that string is valid JSON
+  but invalid for the model API, and a single such tool result in a Session log
+  made every later DeepSeek Messages request fail with `400 INVALID_REQUEST`.
+  Unpaired surrogates are replaced with `U+FFFD` (length-preserving, so search
+  offsets stay aligned).
+
 ## [0.3.2] — 2026-10-23
 
 ### Fixed
@@ -46,18 +64,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   made DSH announce `已添加工具：pdf_read_pages` at the start of every chat;
   image calls still resolve the attachment store lazily, and text-only calls
   never need it.
-- Page geometry is no longer measured while the preview is scrolling. The
-  O(410) rect pass used to run on every lazy page render (ResizeObserver),
-  forcing a full preview layout against PDF.js and leaving a grey placeholder
-  for seconds at high zoom on Retina displays. Measurements now run ~260 ms
-  after scrolling stops, are skipped entirely while the saved page/zoom restore
-  is in flight, and page wrappers are cached between passes.
-- PDF text and metadata are now returned as well-formed Unicode. Some pages'
-  fonts make PDF.js emit an unpaired UTF-16 surrogate (for example `U+D835`);
-  that string is valid JSON but invalid for the model API, and a single such
-  tool result in a Session log made every later DeepSeek Messages request fail
-  with `400 INVALID_REQUEST`. Unpaired surrogates are replaced with `U+FFFD`
-  (length-preserving, so search offsets stay aligned).
 
 ## [0.3.1] — 2026-10-22
 
@@ -135,6 +141,7 @@ First public release.
 - `pdfjs-dist` is pinned to `6.3.289` to match the host process.
 - MIT licensed.
 
+[0.3.3]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.3.3
 [0.3.2]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.3.2
 [0.3.1]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Strepsiades2/dsh-book-reader/releases/tag/v0.3.0
