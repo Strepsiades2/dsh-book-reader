@@ -4,6 +4,39 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] — 2026-10-29
+
+### Fixed
+
+- Page geometry is no longer measured while the PDF preview is scrolling. The
+  O(410) rect pass used to run on every lazy page render (ResizeObserver),
+  forcing a full preview layout against PDF.js and leaving a grey placeholder
+  for seconds at high zoom on Retina displays. Measurements now run ~260 ms
+  after scrolling stops, are skipped entirely while the saved page/zoom restore
+  is in flight, and page wrappers are cached between passes.
+- PDF text, search snippets, outline titles and document metadata are now
+  returned as well-formed Unicode. Some pages' fonts make PDF.js emit an
+  unpaired UTF-16 surrogate (for example `U+D835`); that string is valid JSON
+  but invalid for the model API, and a single such tool result in a Session log
+  made every later DeepSeek Messages request fail with `400 INVALID_REQUEST`.
+  Unpaired surrogates are replaced with `U+FFFD` (length-preserving, so search
+  offsets stay aligned).
+## [0.3.2] — 2026-10-23
+
+### Fixed
+
+- `pdf_read_pages` is now registered synchronously with the other two tools
+  instead of waiting for the `attachments` injection. The later registration
+  made DSH announce `已添加工具：pdf_read_pages` at the start of every chat;
+  image calls still resolve the attachment store lazily, and text-only calls
+  never need it.
+## [0.3.1] — 2026-10-22
+
+### Fixed
+
+- Text-only `pdf_read_pages` calls (`include_image:false`) no longer crash while
+  rendering their output, and they no longer require an image-capable model
+  route or the attachment store; image reads still require both.
 ## [0.3.0] — 2026-10-20
 
 ### Changed
@@ -36,43 +69,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   schema used a property-level `required: false`, which DSH's `defineTool`
   rejects at registration time. The exception only reached the Host log, so the
   plugin looked enabled with two tools instead of three.
-
-## [0.3.3] — 2026-10-29
-
-### Fixed
-
-- Page geometry is no longer measured while the PDF preview is scrolling. The
-  O(410) rect pass used to run on every lazy page render (ResizeObserver),
-  forcing a full preview layout against PDF.js and leaving a grey placeholder
-  for seconds at high zoom on Retina displays. Measurements now run ~260 ms
-  after scrolling stops, are skipped entirely while the saved page/zoom restore
-  is in flight, and page wrappers are cached between passes.
-- PDF text, search snippets, outline titles and document metadata are now
-  returned as well-formed Unicode. Some pages' fonts make PDF.js emit an
-  unpaired UTF-16 surrogate (for example `U+D835`); that string is valid JSON
-  but invalid for the model API, and a single such tool result in a Session log
-  made every later DeepSeek Messages request fail with `400 INVALID_REQUEST`.
-  Unpaired surrogates are replaced with `U+FFFD` (length-preserving, so search
-  offsets stay aligned).
-
-## [0.3.2] — 2026-10-23
-
-### Fixed
-
-- `pdf_read_pages` is now registered synchronously with the other two tools
-  instead of waiting for the `attachments` injection. The later registration
-  made DSH announce `已添加工具：pdf_read_pages` at the start of every chat;
-  image calls still resolve the attachment store lazily, and text-only calls
-  never need it.
-
-## [0.3.1] — 2026-10-22
-
-### Fixed
-
-- Text-only `pdf_read_pages` calls (`include_image:false`) no longer crash while
-  rendering their output, and they no longer require an image-capable model
-  route or the attachment store; image reads still require both.
-
 ## [0.2.0] — 2026-10-20
 
 ### Added
@@ -88,7 +84,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Docs: the README is split into an English `README.md` and a Simplified Chinese
   `README.zh-CN.md`, both rewritten in a product-page style (badges, quick start,
   feature table, model-tool examples, FAQ, data/privacy notes).
-
 ## [0.1.1] — 2026-10-18
 
 ### Changed
@@ -111,7 +106,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   automatic per-turn position hint already tells the model the current page, so
   the button was redundant. The search panel's per-result “→ AI” insertion
   remains.
-
 ## [0.1.0] — 2026-10-18
 
 First public release.
