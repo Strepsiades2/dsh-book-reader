@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Page-text truncation no longer splits a surrogate pair. `trimPageText` cut at
+  `maxTextCharsPerPage` with `slice()`; a math bold glyph (U+1D400 and above) at
+  the cut left a lone high surrogate, and one such tool result made every later
+  DeepSeek Messages request fail with `400 INVALID_REQUEST`. Truncation now backs
+  off a split pair, and every rendered tool-result string (page blocks, header,
+  search snippets) is re-checked for well-formed Unicode at the output boundary.
+
 ## [0.3.3] — 2026-10-29
 
 ### Fixed

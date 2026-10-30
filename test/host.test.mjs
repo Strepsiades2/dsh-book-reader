@@ -604,6 +604,14 @@ await test('trimPageText collapses noise, caps, and reports unavailable text', (
     unavailable: true,
   })
   assert.equal(host.trimPageText(undefined, 100).unavailable, true)
+  // A cap that lands in the middle of a valid surrogate pair must not emit a
+  // lone high surrogate: the model API rejects the whole history with 400.
+  const pairAtCap = host.trimPageText(`${'x'.repeat(9)}𝐀yy`, 10)
+  assert.equal(pairAtCap.truncated, true)
+  assert.equal(pairAtCap.text, 'x'.repeat(9))
+  assert.equal(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(pairAtCap.text), false)
+  // Raw text arriving with an unpaired surrogate is repaired, not propagated.
+  assert.equal(host.trimPageText('a\ud835b', 100).text, 'a\uFFFDb')
 })
 
 // ---------------------------------------------------------------------------
